@@ -59,6 +59,7 @@ export const IPC = {
   skinCatalog: 'skin:catalog',
   skinImport: 'skin:import',
   skinRemove: 'skin:remove',
+  skinRename: 'skin:rename',
 
   overlayState: 'overlay:state'
 } as const

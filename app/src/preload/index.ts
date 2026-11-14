@@ -51,6 +51,8 @@ const api: ButlerApi = {
   importSkin: (): Promise<{ ok: boolean; key?: string; label?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.skinImport),
   removeSkin: (key: string): Promise<boolean> => ipcRenderer.invoke(IPC.skinRemove, key),
+  renameSkin: (key: string, label: string): Promise<{ ok: boolean; label?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC.skinRename, { key, label }),
   onOverlay: (
     fn: (payload: { mode: 'off' | 'voice' | 'action'; phase: string; tools: number }) => void
   ): Unsubscribe => {

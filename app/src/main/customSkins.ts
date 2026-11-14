@@ -100,3 +100,21 @@ export function removeCustomSkin(key: string): boolean {
     return false
   }
 }
+
+/** 右键改名：只改显示名，键与文件都不动 */
+export function renameCustomSkin(key: string, label: string): { ok: boolean; label?: string; error?: string } {
+  try {
+    const clean = label.replace(/\s+/g, ' ').trim().slice(0, 20)
+    if (!clean) return { ok: false, error: '名字不能是空的' }
+    const rows = readIndex()
+    const hit = rows.find((row) => row.key === key)
+    if (!hit) return { ok: false, error: '这张贴图已经不在了' }
+    hit.label = clean
+    writeIndex(rows)
+    logInfo('customSkins.rename', key, clean)
+    return { ok: true, label: clean }
+  } catch (error) {
+    logError('customSkins.rename', error)
+    return { ok: false, error: String((error as Error)?.message ?? error) }
+  }
+}

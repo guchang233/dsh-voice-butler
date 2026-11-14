@@ -212,7 +212,10 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') void window.api.hidePanel()
+      if (event.key !== 'Escape') return
+      // 设置页里正在改名、或者开着右键菜单时，Esc 只关那一层，别把整个面板收起来
+      if (document.querySelector('.skin-menu, .skin-rename')) return
+      void window.api.hidePanel()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -696,42 +699,18 @@ function SettingsView({
 
         <div className="field">
           <span className="field-label">换肤</span>
-          <div className="seg-group">
-            {allSkins().map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className={skin === item.key ? 'seg-item is-on' : 'seg-item'}
-                onClick={() => {
-                  void (async () => {
-                    // 以主进程实际落下的键为准（自定义贴图必须是真导入过的）
-                    const applied = await window.api.setSkin(item.key)
-                    setSkin(applied)
-                    await onRefresh()
-                  })()
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="seg-item"
-              onClick={() => {
-                void (async () => {
-                  const result = await window.api.importSkin()
-                  if (!result.ok || !result.key) return
-                  await refreshSkins()
-                  setSkin(result.key)
-                  await onRefresh()
-                })()
-              }}
-            >
-              ＋ 导入图片
-            </button>
-          </div>
+          <SkinPicker
+            current={skin}
+            onPick={async (key) => {
+              // 以主进程实际落下的键为准（自定义贴图必须是真导入过的）
+              const applied = await window.api.setSkin(key)
+              setSkin(applied)
+              await onRefresh()
+            }}
+            onRefresh={onRefresh}
+          />
           <span className="field-hint">
-            点一下立刻换，悬浮球和面板一起换，下次启动还记着；导入完会自动切过去。
+            点一下立刻换，悬浮球和面板一起换，下次启动还记着；自己导入的那几张可以右键改名或删掉。
           </span>
         </div>
 
@@ -804,6 +783,181 @@ function SettingsView({
           </div>
         </dl>
       </div>
+    </>
+  )
+}
+
+type SkinPickerProps = {
+  current: string
+  onPick: (key: string) => Promise<void>
+  onRefresh: () => Promise<void>
+}
+
+/**
+ * 贴图选择器。
+ *
+ * 用网格而不是一行分段按钮：导入多了会横向顶出去（面板只有 420 宽），
+ * 网格按固定格子换行、超出滚动，标签一律省略号。
+ * 自己导入的那几张支持右键改名 / 删除。
+ */
+function SkinPicker({ current, onPick, onRefresh }: SkinPickerProps): JSX.Element {
+  const [menu, setMenu] = useState<{ key: string; label: string; x: number; y: number } | null>(null)
+  const [editing, setEditing] = useState<{ key: string; label: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const skins = allSkins()
+
+  useEffect(() => {
+    if (!menu) return
+    const close = (): void => setMenu(null)
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('blur', close)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('blur', close)
+    }
+  }, [menu])
+
+  const commitRename = async (): Promise<void> => {
+    const target = editing
+    setEditing(null)
+    if (!target) return
+    const label = target.label.trim()
+    if (!label) return
+    const result = await window.api.renameSkin(target.key, label)
+    if (!result.ok) {
+      setError(result.error ?? '改名失败')
+      return
+    }
+    setError(null)
+    await refreshSkins()
+    await onRefresh()
+  }
+
+  const removeOne = async (key: string): Promise<void> => {
+    setMenu(null)
+    const removed = await window.api.removeSkin(key)
+    if (!removed) {
+      setError('这张贴图已经不在了')
+      return
+    }
+    setError(null)
+    await refreshSkins()
+    await onRefresh()
+  }
+
+  const importOne = async (): Promise<void> => {
+    const result = await window.api.importSkin()
+    if (!result.ok || !result.key) return
+    await refreshSkins()
+    await onPick(result.key)
+  }
+
+  return (
+    <>
+      <div className="skin-grid">
+        {/* 导入放第一格：贴图一多，它会滚到看不见的地方 */}
+        <div
+          className="skin-cell is-add"
+          role="button"
+          tabIndex={0}
+          title="导入一张图片当贴图"
+          onClick={() => void importOne()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              void importOne()
+            }
+          }}
+        >
+          <span className="skin-plus">＋</span>
+          <span className="skin-name">导入图片</span>
+        </div>
+
+        {skins.map((item) => {
+          const custom = item.key.startsWith('user-')
+          if (editing?.key === item.key) {
+            return (
+              <div key={item.key} className="skin-cell is-editing">
+                <input
+                  className="skin-rename"
+                  autoFocus
+                  maxLength={20}
+                  value={editing.label}
+                  onChange={(event) => setEditing({ key: item.key, label: event.target.value })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.stopPropagation()
+                      setEditing(null)
+                    }
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void commitRename()
+                    }
+                  }}
+                  onBlur={() => void commitRename()}
+                  spellCheck={false}
+                />
+                <span className="skin-name">回车保存</span>
+              </div>
+            )
+          }
+          // 用 div 而不是 button：Chrome 的按钮有自己的布局算法，display:flex 基本不生效，
+          // 子元素会按行内流排，名字一长就横向顶出去。
+          return (
+            <div
+              key={item.key}
+              className={current === item.key ? 'skin-cell is-on' : 'skin-cell'}
+              role="button"
+              tabIndex={0}
+              title={custom ? `${item.label}（右键改名 / 删除）` : item.label}
+              onClick={() => void onPick(item.key)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  void onPick(item.key)
+                }
+              }}
+              onContextMenu={(event) => {
+                if (!custom) return
+                event.preventDefault()
+                event.stopPropagation()
+                setMenu({
+                  key: item.key,
+                  label: item.label,
+                  x: Math.min(event.clientX, window.innerWidth - 132),
+                  y: Math.min(event.clientY, window.innerHeight - 86)
+                })
+              }}
+            >
+              <img className="skin-thumb" src={item.url} alt="" draggable={false} />
+              <span className="skin-name">{item.label}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {error && <span className="skin-error">{error}</span>}
+
+      {menu && (
+        <div
+          className="skin-menu"
+          style={{ left: menu.x, top: menu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setEditing({ key: menu.key, label: menu.label })
+              setMenu(null)
+            }}
+          >
+            改名
+          </button>
+          <button type="button" className="is-danger" onClick={() => void removeOne(menu.key)}>
+            删除
+          </button>
+        </div>
+      )}
     </>
   )
 }

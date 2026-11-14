@@ -39,6 +39,7 @@ export type ButlerApi = {
   getSkinCatalog: () => Promise<Array<{ key: string; label: string; url: string }>>
   importSkin: () => Promise<{ ok: boolean; key?: string; label?: string; error?: string }>
   removeSkin: (key: string) => Promise<boolean>
+  renameSkin: (key: string, label: string) => Promise<{ ok: boolean; label?: string; error?: string }>
   onOverlay: (
     fn: (payload: { mode: 'off' | 'voice' | 'action'; phase: string; tools: number }) => void
   ) => Unsubscribe

@@ -2,7 +2,7 @@ import { ipcMain, nativeTheme } from 'electron'
 import { z } from 'zod'
 import { IPC, type ThemeMode } from '../shared/ipc'
 import { getBridge } from './bridge'
-import { importCustomSkin, listCustomSkins, removeCustomSkin } from './customSkins'
+import { importCustomSkin, listCustomSkins, removeCustomSkin, renameCustomSkin } from './customSkins'
 import { logError, logInfo } from './log'
 import { saveApiKey, savePreferences, getSettings } from './store'
 import { getVoice } from './voice'
@@ -139,6 +139,13 @@ export function registerIpc(): void {
       broadcastSkin('whale')
     }
     return removed
+  })
+
+  /** 右键改名：只动显示名 */
+  ipcMain.handle(IPC.skinRename, (_e, raw: unknown) => {
+    const parsed = z.object({ key: z.string().max(80), label: z.string().max(60) }).safeParse(raw)
+    if (!parsed.success) return { ok: false, error: '名字格式不正确' }
+    return renameCustomSkin(parsed.data.key, parsed.data.label)
   })
 
   ipcMain.on(IPC.ballDragStart, () => startDrag())
