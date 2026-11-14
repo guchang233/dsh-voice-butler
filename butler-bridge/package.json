@@ -1,0 +1,11 @@
+{
+  "name": "butler-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "语音壳 ↔ DSH 管家会话的桥：收文本、喂会话、把回话/工具/确认增量推回面板",
+  "main": "lib/index.js",
+  "exports": { ".": "./lib/index.js" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "files": ["lib", "cordis.patch.yml", "README.md"]
+}

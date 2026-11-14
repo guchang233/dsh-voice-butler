@@ -1,0 +1,111 @@
+# 语音管家
+
+**喊一声「大肥鱼」，然后用嘴把事说完。**
+
+这一版把职责切干净了：
+
+| 谁 | 干什么 | 在哪 |
+|---|---|---|
+| **语音壳**（Electron「管家」） | 听（唤醒词 + 录音 + 识别）、说（念回话）、显示（把过程铺到面板上） | [`app/`](app/) |
+| **管家会话**（DSH 里的一条会话，模式＝管家模式） | 想和做：判断、调工具、动这台电脑 | DSH 桌面端，侧栏里叫「DSH语音管家」 |
+| **桥**（DSH 插件 `butler-bridge`） | 把识别到的文字投进会话，把会话里的增量、工具、确认推回面板 | [`butler-bridge/`](butler-bridge/) |
+| **模式**（DSH 预设 `butler`） | 管家人格：口语短句、先看后动、说人话 | [`dsh-preset/`](dsh-preset/) |
+| **守护**（DSH 插件 `dsh-butler-sync`） | DSH 启动时顺手把语音壳拉起来 | [`dsh-sync/`](dsh-sync/) |
+
+```
+你说话
+  │  唤醒词（本地 sherpa-onnx）→ 录音 → 端点检测 → 云端 ASR
+  ▼
+voice.ts  ──POST /voice/say──►  butler-bridge  ──►  DSH 会话「DSH语音管家」（管家模式）
+                                                       │
+  panel  ◄──GET /voice/frames（长轮询：逐字/工具/确认）──┘
+     │
+     └─► TTS 边收边念
+```
+
+语音壳**不再持有任何对话状态**：没有自己的模型调用、没有工具表、没有确认闸门、没有本地聊天记录。
+它挂了重开，会话里的上下文一条不少——因为上下文在 DSH 里。
+
+## 装
+
+三个 bundle 都在这个目录里，DSH 侧一次装好：
+
+```powershell
+dsh plugin --profile desktop add link:D:\AI\ClaudeCode\语音管家\butler-bridge
+dsh plugin --profile desktop add link:D:\AI\ClaudeCode\语音管家\dsh-preset
+dsh plugin --profile desktop add link:D:\AI\ClaudeCode\语音管家\dsh-sync
+```
+
+装完**完全退出并重开 DSH 桌面端**（注入表与预设都在启动时收集一次）。
+重开后侧栏里会出现一条 **DSH语音管家** 会话，模式标着「管家模式」。
+
+语音壳本身：
+
+```powershell
+cd app
+npm install
+npm run dev          # 开发
+npm run dist         # 打包 → dist\win-unpacked\管家.exe
+```
+
+首次启动填一把 DeepSeek Key——**只用于语音识别和语音合成**，对话不花这把 Key。
+
+## 用
+
+| 操作 | 效果 |
+|---|---|
+| 喊「**大肥鱼**」 | 响一声、鲸鱼亮起来、面板弹出，开始听你说 |
+| 说完停顿 ~0.75 秒 | 自动断句 → 识别 → 送进 DSH 管家会话 |
+| `Ctrl+Alt+H` | 开关面板 |
+| `Ctrl+Alt+J` | 不用嘴，直接叫醒（等价于喊唤醒词） |
+| 播报中再喊唤醒词 | 立刻打断，转去听你说 |
+| 面板里的「新会话」 | 在 DSH 里换一条干净的管家会话 |
+| 托盘菜单 | 面板开关、叫醒、新会话、换肤、开机启动、退出 |
+
+面板上能看到的，就是那条 DSH 会话里正在发生的：你说的话、助手的逐字输出、每一次工具调用（`pwsh` 跑了什么命令）、以及需要你点头的确认卡片。
+
+## 这一版删掉的东西
+
+上一版语音壳里有 26 个工具、一个自带的 function-calling 循环、确认闸门、备忘、提醒、本地 jsonl 聊天记录——**全删了**。
+它们该在 DSH 里：工具是 DSH 的工具，确认是 DSH 的 approval，记录是 DSH 的会话日志。
+语音壳现在只剩：麦克风、唤醒词、端点检测、ASR、TTS、窗口、托盘、面板。
+
+## 目录
+
+```
+语音管家/
+├── app/                 Electron 语音壳（听 + 说 + 面板）
+│   └── src/main/
+│       ├── voice.ts     语音状态机：唤醒 → 听 → 识别 → 交出去；帧 → 念出来
+│       ├── bridge.ts    与 DSH 的 HTTP 通道（长轮询 + 投递）
+│       ├── audio/       kws.ts 唤醒词、vad.ts 端点检测、selftest.ts 三环自测
+│       ├── speech/      asr.ts 识别、tts.ts 合成（都走 DeepSeek 语音接口）
+│       └── windows.ts   悬浮球 / 面板 / 顶部特效层
+├── butler-bridge/       DSH 插件：/voice/* 路由 + 会话事件流 + 确认代签
+├── dsh-preset/          DSH 预设：管家模式（persona + 工具 + 压缩）
+├── dsh-sync/            DSH 插件：拉起语音壳、写 DSH 地址
+├── scripts/             手工验证脚本
+└── docs/                设计说明与截图
+```
+
+## 自己验一遍
+
+```powershell
+# 桥活着、会话是谁
+curl http://127.0.0.1:63563/voice/ping
+
+# 不用麦克风，直接把一句话投进管家会话，看它回什么
+node scripts/probe-voice.mjs "现在几点了"
+
+# 唤醒词三环（TTS 念「大肥鱼」→ 喂回本地引擎 → 再送 ASR）
+$env:BUTLER_KWS_SELFTEST="1"; cd app; npm run dev
+```
+
+日志：`%APPDATA%\ai-butler\main.log`（壳）、DSH 桌面端的控制台（桥）。
+
+## 已知边界
+
+- 唤醒词写死在 `app/resources/models/kws/keywords.txt`，换词要改文件并重启壳。
+- 识别、合成都是云端，单次识别上限 120 秒；说完停顿约 0.75 秒断句。
+- 语音壳自己不开确认闸门——确认由 DSH 的 approval 服务决定，壳只负责把它显示出来、用嘴问一句。
+- 面板上的历史是「这次连上之后」的；更早的记录在 DSH 的会话里翻。

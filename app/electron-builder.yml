@@ -1,0 +1,27 @@
+appId: com.aibutler.app
+productName: 管家
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - '**/*'
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: Butler-${version}-${arch}.${ext}
+  icon: build/icon.png
+  # 这台打包机没有创建符号链接的权限，签名与 rcedit 都用不上，直接跳过
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: 管家

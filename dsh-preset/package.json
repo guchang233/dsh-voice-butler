@@ -1,0 +1,9 @@
+{
+  "name": "dsh-butler-preset",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 的「管家模式」：语音管家用的 agent 预设（口语短句、先看后动）",
+  "dsh": { "bundle": { "patch": ["./patch/butler.patch.yml"] } },
+  "files": ["patch"]
+}

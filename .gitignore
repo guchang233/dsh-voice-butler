@@ -1,0 +1,18 @@
+# 依赖与构建产物
+node_modules/
+app/node_modules/
+app/out/
+app/dist/
+**/node_modules/
+
+# 旧版语音壳留下的个人聊天记录（数据，不进仓库）
+conversations/
+sessions/
+
+# 系统 / 编辑器垃圾
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+.vscode/
+.idea/

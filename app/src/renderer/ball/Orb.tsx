@@ -1,0 +1,87 @@
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { SkinImage } from '../shared/SkinImage'
+
+type Press = { x: number; y: number; dragging: boolean }
+
+export default function Orb(): JSX.Element {
+  const [pressed, setPressed] = useState(false)
+  const [hover, setHover] = useState(false)
+  const [state, setState] = useState<
+    'idle' | 'listening' | 'thinking' | 'speaking' | 'confirming' | 'offline' | 'error' | 'muted'
+  >('idle')
+  const [level, setLevel] = useState(0)
+  const pressRef = useRef<Press | null>(null)
+
+  useEffect(() => {
+    const onMove = (event: PointerEvent): void => {
+      const press = pressRef.current
+      if (!press || press.dragging) return
+      const dx = event.screenX - press.x
+      const dy = event.screenY - press.y
+      // 8px 容差：手抖一两像素不该被当成拖拽，否则「点一下」会被吃成拖拽
+      if (Math.hypot(dx, dy) > 8) {
+        press.dragging = true
+        window.api.dragStart()
+      }
+    }
+
+    const onUp = (): void => {
+      const press = pressRef.current
+      pressRef.current = null
+      setPressed(false)
+      if (!press) return
+      if (press.dragging) window.api.dragEnd()
+      else void window.api.togglePanel()
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [])
+
+  useEffect(() => {
+    const offHover = window.api.onBallHover(setHover)
+    const offState = window.api.onVoiceState((payload) => {
+      setState(payload.state)
+      if (payload.state !== 'listening') setLevel(0)
+    })
+    const offLevel = window.api.onMicLevel(setLevel)
+    return () => {
+      offHover()
+      offState()
+      offLevel()
+    }
+  }, [])
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0) return
+    pressRef.current = { x: event.screenX, y: event.screenY, dragging: false }
+    setPressed(true)
+  }
+
+  const scale = 1 + Math.min(level, 1) * 0.12
+
+  return (
+    <div className={`stage is-${state}${hover ? ' is-hover' : ''}`}>
+      <div className="float">
+        <div
+          className={pressed ? 'orb is-pressed' : 'orb'}
+          onPointerDown={onPointerDown}
+          role="button"
+          aria-label="管家"
+          style={state === 'listening' ? { transform: `scale(${scale})` } : undefined}
+        >
+          <span className="orb-ring" />
+          <SkinImage className="orb-char" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
