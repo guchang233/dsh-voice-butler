@@ -18,6 +18,7 @@ import {
   WAKE_WORD,
   type LinkState,
   type PublicSettings,
+  type ThemeMode,
   type VoiceFrame,
   type VoiceState
 } from '../../shared/ipc'
@@ -224,8 +225,14 @@ export default function App(): JSX.Element {
 
   /* -------------------------------------------------------------- 动作 */
 
-  const send = useCallback(async () => {
-    const text = input.trim()
+  /** 只同步设置，不切页（主题 / 连续对话 / 换皮这些即时开关用） */
+  const refreshSettings = useCallback(async () => {
+    const next = await window.api.getSettings()
+    setSettings(next)
+    setMicOn(next.micEnabled)
+  }, [])
+
+  const send = useCallback(async () => {    const text = input.trim()
     if (!text) return
     setInput('')
     const result = await window.api.say(text)
@@ -267,6 +274,11 @@ export default function App(): JSX.Element {
             <span className="name">
               管家
               <span className={link === 'online' ? 'link-dot on' : 'link-dot'} title={origin} />
+              {settings?.continuous && (
+                <span className="live-badge" title="连续对话：说完直接接着听，喊「没事了」结束">
+                  连续
+                </span>
+              )}
             </span>
             <span className="sub">{statusText}</span>
           </div>
@@ -312,6 +324,7 @@ export default function App(): JSX.Element {
               setNotice(message)
               setView('chat')
             }}
+            onRefresh={refreshSettings}
           />
         ) : (
           <>
@@ -520,6 +533,8 @@ type SettingsProps = {
   preset: string | null
   origin: string
   onSaved: (next: PublicSettings, message: string) => void
+  /** 不切页、只把最新设置同步回外层（主题 / 连续对话 / 换皮这类即时开关用） */
+  onRefresh: () => Promise<void>
 }
 
 function SettingsView({
@@ -528,7 +543,8 @@ function SettingsView({
   sessionId,
   preset,
   origin,
-  onSaved
+  onSaved,
+  onRefresh
 }: SettingsProps): JSX.Element {
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(settings?.baseUrl ?? 'https://api.deepseek.com')
@@ -536,6 +552,8 @@ function SettingsView({
   const [voice, setVoice] = useState<'stella' | 'tide'>(settings?.ttsVoice ?? 'stella')
   const [skin, setSkin] = useState<string>((settings?.skin as string) ?? 'whale')
   const [bargeIn, setBargeIn] = useState(settings?.bargeIn ?? false)
+  const [continuous, setContinuous] = useState(settings?.continuous ?? false)
+  const [theme, setTheme] = useState<ThemeMode>(settings?.theme ?? 'system')
   const [state, setState] = useState<{ kind: 'idle' | 'busy' | 'ok' | 'bad'; text: string }>({
     kind: 'idle',
     text: ''
@@ -548,7 +566,9 @@ function SettingsView({
       baseUrl: baseUrl.trim() || undefined,
       dshOrigin: dshOrigin.trim(),
       ttsVoice: voice,
-      bargeIn
+      bargeIn,
+      continuous,
+      theme
     })
     if (!result.ok) {
       setState({ kind: 'bad', text: result.error })
@@ -624,6 +644,57 @@ function SettingsView({
         </div>
 
         <div className="field">
+          <span className="field-label">界面主题</span>
+          <div className="seg-group">
+            {(
+              [
+                ['system', '跟随系统'],
+                ['light', '纸（亮）'],
+                ['dark', '墨（暗）']
+              ] as Array<[ThemeMode, string]>
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={theme === key ? 'seg-item is-on' : 'seg-item'}
+                onClick={() => {
+                  setTheme(key)
+                  // 立刻生效：主进程改 nativeTheme，三个窗口一起跟着变
+                  void (async () => {
+                    await window.api.saveSettings({ theme: key })
+                    await onRefresh()
+                  })()
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="field-hint">面板、悬浮球、顶部特效一起换；「跟随系统」就听 Windows 的。</span>
+        </div>
+
+        <label className="switch-row">
+          <span>
+            <span className="field-label">连续对话</span>
+            <span className="field-hint">
+              一轮说完直接接着听，不用再喊「{WAKE_WORD}」；说「没事了」结束，静默 15 秒也会退回。
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={continuous}
+            onChange={(event) => {
+              const next = event.target.checked
+              setContinuous(next)
+              void (async () => {
+                await window.api.saveSettings({ continuous: next })
+                await onRefresh()
+              })()
+            }}
+          />
+        </label>
+
+        <div className="field">
           <span className="field-label">换肤</span>
           <div className="seg-group">
             {allSkins().map((item) => (
@@ -632,8 +703,12 @@ function SettingsView({
                 type="button"
                 className={skin === item.key ? 'seg-item is-on' : 'seg-item'}
                 onClick={() => {
-                  setSkin(item.key)
-                  void window.api.setSkin(item.key)
+                  void (async () => {
+                    // 以主进程实际落下的键为准（自定义贴图必须是真导入过的）
+                    const applied = await window.api.setSkin(item.key)
+                    setSkin(applied)
+                    await onRefresh()
+                  })()
                 }}
               >
                 {item.label}
@@ -647,14 +722,17 @@ function SettingsView({
                   const result = await window.api.importSkin()
                   if (!result.ok || !result.key) return
                   await refreshSkins()
-                  setSkin(result.key as string)
+                  setSkin(result.key)
+                  await onRefresh()
                 })()
               }}
             >
               ＋ 导入图片
             </button>
           </div>
-          <span className="field-hint">点一下立刻换，悬浮球和面板一起换，下次启动还记着。</span>
+          <span className="field-hint">
+            点一下立刻换，悬浮球和面板一起换，下次启动还记着；导入完会自动切过去。
+          </span>
         </div>
 
         <label className="switch-row">

@@ -169,6 +169,9 @@ async function bootstrap(): Promise<void> {
   const settings = getSettings()
   logInfo('settings', JSON.stringify({ ...settings, hasKey: settings.hasKey }))
 
+  // 主题：设置里的「纸/墨/跟随系统」，三个窗口一起跟着变
+  nativeTheme.themeSource = settings.theme
+
   createBall(settings.ballPosition)
   createPanel()
   createOverlay()

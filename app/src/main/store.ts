@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { WAKE_WORD, type SkinKey } from '../shared/ipc'
+import { WAKE_WORD, type SkinKey, type ThemeMode } from '../shared/ipc'
 
 /**
  * 落盘结构。
@@ -20,7 +20,12 @@ type Stored = {
   micEnabled?: boolean
   ttsVoice?: 'stella' | 'tide'
   bargeIn?: boolean
-  skin?: SkinKey
+  /** 连续对话：一轮说完直接接着听 */
+  continuous?: boolean
+  /** 贴图键：内置 whale / niang02，或导入的 user-xxxx */
+  skin?: string
+  /** 界面主题 */
+  theme?: ThemeMode
   /** 手动指定的 DSH 地址；留空则读 endpoint.json */
   dshOrigin?: string
 }
@@ -31,13 +36,24 @@ const DEFAULTS: Stored = {
   micEnabled: true,
   ttsVoice: 'stella',
   bargeIn: false,
-  skin: 'whale'
+  continuous: false,
+  skin: 'whale',
+  theme: 'system'
 }
 
-const SKIN_KEYS: SkinKey[] = ['whale', 'niang02']
-
+/**
+ * 皮肤键原来只认两张内置图，用户导入的 user-xxxx 一存就被改回 whale——
+ * 这就是「能导入、但切换没反应」的根因。现在只做形状校验，具体存不存在交给渲染层兜底。
+ */
 function normalizeSkin(value: unknown): SkinKey {
-  return SKIN_KEYS.includes(value as SkinKey) ? (value as SkinKey) : 'whale'
+  if (typeof value !== 'string') return 'whale'
+  const key = value.trim()
+  if (!key || key.length > 60) return 'whale'
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : 'whale'
+}
+
+function normalizeTheme(value: unknown): ThemeMode {
+  return value === 'light' || value === 'dark' ? value : 'system'
 }
 
 let cache: Stored | null = null
@@ -62,7 +78,9 @@ function read(): Stored {
       micEnabled: parsed.micEnabled !== false,
       ttsVoice: parsed.ttsVoice === 'tide' ? 'tide' : 'stella',
       bargeIn: parsed.bargeIn === true,
+      continuous: parsed.continuous === true,
       skin: normalizeSkin(parsed.skin),
+      theme: normalizeTheme(parsed.theme),
       dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined
     }
   } catch {
@@ -89,7 +107,9 @@ export type PublicLike = {
   micEnabled: boolean
   ttsVoice: 'stella' | 'tide'
   bargeIn: boolean
+  continuous: boolean
   skin: SkinKey
+  theme: ThemeMode
   dshOrigin: string
 }
 
@@ -103,7 +123,9 @@ export function getSettings(): PublicLike {
     micEnabled: s.micEnabled !== false,
     ttsVoice: s.ttsVoice === 'tide' ? 'tide' : 'stella',
     bargeIn: s.bargeIn === true,
+    continuous: s.continuous === true,
     skin: normalizeSkin(s.skin),
+    theme: normalizeTheme(s.theme),
     dshOrigin: s.dshOrigin ?? ''
   }
 }
@@ -145,7 +167,9 @@ export function savePreferences(patch: {
   micEnabled?: boolean
   ttsVoice?: 'stella' | 'tide'
   bargeIn?: boolean
+  continuous?: boolean
   skin?: SkinKey
+  theme?: ThemeMode
   dshOrigin?: string
 }): void {
   const s = read()
@@ -156,7 +180,9 @@ export function savePreferences(patch: {
     micEnabled: patch.micEnabled ?? s.micEnabled,
     ttsVoice: patch.ttsVoice ?? s.ttsVoice,
     bargeIn: patch.bargeIn ?? s.bargeIn,
+    continuous: patch.continuous ?? s.continuous === true,
     skin: normalizeSkin(patch.skin ?? s.skin),
+    theme: normalizeTheme(patch.theme ?? s.theme),
     dshOrigin: patch.dshOrigin ?? s.dshOrigin
   })
 }

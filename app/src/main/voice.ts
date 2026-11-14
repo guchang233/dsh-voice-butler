@@ -22,9 +22,14 @@ import { IPC, type LinkState, type VoiceFrame, type VoiceState } from '../shared
 const PREROLL_MS = 700
 const MIN_UTTERANCE_MS = 350
 const MAX_UTTERANCE_MS = 15_000
+/** 连续对话里，静默这么久没人说话就退回去等唤醒词 */
+const CONTINUOUS_IDLE_MS = 15_000
 
 const YES = /(可以|行|好|嗯|对|是|确认|同意|继续|放行|ok|yes|okay|开吧|关吧|删吧)/i
 const NO = /(别|不|取消|算了|不要|停|等等|no)/i
+
+/** 连续对话里的收尾话术：听到就结束这一轮对话，不用再喊唤醒词 */
+const STOP_TALK = /(没事了|没事啦|没事|没有了|没了|先这样|就这样|不用了|不要了|拜拜|再见|退下|结束对话|够了|歇着吧)/
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -52,6 +57,14 @@ export class Voice {
   private spokenChars = 0
   private link: LinkState = 'connecting'
   private approval: { id: string; tool: string; reason: string } | null = null
+  /** 连续对话：一轮说完直接接着听 */
+  private continuous = false
+  private continueTimer: NodeJS.Timeout | null = null
+  private listenDeadline: NodeJS.Timeout | null = null
+  /** 这一轮连续收音最晚管到什么时候（没听清就重听，但不超过这个时刻） */
+  private continuousArmedUntil = 0
+  private speakEndsAt = 0
+  private runningTurn = false
 
   constructor() {
     this.tts = new TtsQueue(
@@ -65,14 +78,29 @@ export class Voice {
   start(): void {
     this.watcher = createKeywordWatcher()
     this.micEnabled = getSettings().micEnabled
+    this.continuous = getSettings().continuous
     this.broadcast()
-    logInfo('voice', 'started, wake word = ' + WAKE_WORD_TEXT)
+    logInfo('voice', 'started, wake word = ' + WAKE_WORD_TEXT + ', continuous = ' + this.continuous)
   }
 
   setMicEnabled(enabled: boolean): void {
     this.micEnabled = enabled
-    if (!enabled) this.toIdle()
+    if (!enabled) {
+      this.cancelContinue()
+      this.toIdle()
+    }
     logInfo('voice', 'mic = ' + String(enabled))
+  }
+
+  /** 连续对话开关（设置里那个开关） */
+  setContinuous(on: boolean): void {
+    this.continuous = on
+    if (!on) this.cancelContinue()
+    logInfo('voice', 'continuous = ' + String(on))
+  }
+
+  isContinuous(): boolean {
+    return this.continuous
   }
 
   getState(): VoiceState {
@@ -185,6 +213,9 @@ export class Voice {
 
   private triggerWake(keyword: string): void {
     logInfo('voice', 'wake: ' + keyword)
+    this.cancelContinue()
+    // 上一段连续对话可能说了「没事了」提前收尾；再叫醒时按设置恢复
+    this.continuous = getSettings().continuous
     this.tts.stop()
     this.beginListening()
     this.send(IPC.wake, { text: keyword })
@@ -223,6 +254,8 @@ export class Voice {
         capture.resolve(null)
         return
       }
+      // 连续对话里「嗯」了一声就没了：不出戏，接着听
+      if (this.rearmContinuous()) return
       this.toIdle()
       return
     }
@@ -266,7 +299,14 @@ export class Voice {
     }
 
     if (!text) {
+      if (this.rearmContinuous()) return
       this.toIdle()
+      return
+    }
+
+    // 连续对话里的收尾话术：不进 DSH，直接结束这一段对话
+    if (this.continuous && this.isStopTalk(text)) {
+      this.sayFarewell()
       return
     }
 
@@ -277,6 +317,8 @@ export class Voice {
   async deliver(text: string): Promise<void> {
     const clean = text.trim()
     if (!clean) return
+    this.cancelContinue()
+    this.speakEndsAt = 0
     this.spokenChars = 0
     this.chunker = new SentenceChunker()
     try {
@@ -306,6 +348,7 @@ export class Voice {
         // 整段跳过流式（比如工具后直接给结论）时，一次念完
         if (this.spokenChars === 0 && frame.text.trim()) this.speak(frame.text)
         this.scheduleIdle()
+        this.scheduleContinue()
         break
       }
       case 'tool': {
@@ -328,7 +371,9 @@ export class Voice {
         break
       }
       case 'state': {
+        this.runningTurn = frame.running === true
         if (!frame.running && this.state === 'thinking') this.scheduleIdle()
+        if (!frame.running && frame.phase === 'idle') this.scheduleContinue()
         break
       }
       default:
@@ -344,6 +389,7 @@ export class Voice {
   handleLink(link: LinkState): void {
     this.link = link
     if (link === 'offline') {
+      this.cancelContinue()
       if (['idle', 'thinking'].includes(this.state)) this.setState('offline')
       return
     }
@@ -377,6 +423,9 @@ export class Voice {
     this.spokenChars += clean.length
     this.startedSpeakingAt = Date.now()
     this.setState('speaking')
+    // 粗估这句话念完的时刻（中文约每秒 4~5 个字），连续对话靠它排队接话
+    const estimate = Math.max(600, Math.min(12_000, clean.length * 230))
+    this.speakEndsAt = Math.max(Date.now(), this.speakEndsAt) + estimate
     this.tts.say(clean)
   }
 
@@ -387,6 +436,92 @@ export class Voice {
     this.setState('speaking')
     this.tts.say(text)
     this.scheduleIdle(2500)
+  }
+
+  /* ------------------------------------------------------- 连续对话的节拍 */
+
+  /**
+   * 一轮结束后决定要不要自动接着听。
+   * 不喊唤醒词，直接进 listening；但必须等这一轮的话真的念完，
+   * 否则自己的声音会被麦克风收进去（回声消除挡不住「刚开始播报」那一下）。
+   */
+  private scheduleContinue(): void {
+    if (!this.continuous) return
+    if (this.link === 'offline') return
+    if (this.capture) return
+    if (this.micEnabled === false) return
+    this.cancelContinue()
+    this.continueAttempt(Date.now() + 25_000)
+  }
+
+  private continueAttempt(deadline: number): void {
+    if (!this.continuous || this.link === 'offline' || !this.micEnabled) return
+    if (this.capture) return
+    if (this.state === 'listening' || this.state === 'confirming') return
+    // DSH 还在跑（可能在调工具），等下一次 state 帧再叫
+    if (this.runningTurn) return
+
+    const now = Date.now()
+    if (this.state === 'speaking' || now < this.speakEndsAt) {
+      if (now > deadline) return
+      this.continueTimer = setTimeout(() => this.continueAttempt(deadline), 350)
+      return
+    }
+    if (now > deadline) return
+
+    logInfo('voice', 'continuous: 接着听')
+    this.beginListening()
+    this.continuousArmedUntil = Date.now() + CONTINUOUS_IDLE_MS
+    if (this.listenDeadline) clearTimeout(this.listenDeadline)
+    this.listenDeadline = setTimeout(() => {
+      this.listenDeadline = null
+      if (this.state === 'listening') {
+        logInfo('voice', 'continuous: 15 秒没人说话，退回去等唤醒词')
+        this.toIdle()
+      }
+    }, CONTINUOUS_IDLE_MS)
+  }
+
+  /**
+   * 连续对话里没听清（太短 / 识别为空）：不出戏，接着听。
+   * 只在这一轮 15 秒的窗口内有效，避免一直占着麦克风。
+   */
+  private rearmContinuous(): boolean {
+    if (!this.continuous) return false
+    if (this.link === 'offline' || !this.micEnabled) return false
+    if (this.capture) return false
+    if (Date.now() > this.continuousArmedUntil) return false
+    logInfo('voice', 'continuous: 没听清，继续听')
+    this.beginListening()
+    return true
+  }
+
+  private cancelContinue(): void {
+    if (this.continueTimer) {
+      clearTimeout(this.continueTimer)
+      this.continueTimer = null
+    }
+    if (this.listenDeadline) {
+      clearTimeout(this.listenDeadline)
+      this.listenDeadline = null
+    }
+  }
+
+  /** 连续对话里的收尾话术 */
+  private isStopTalk(text: string): boolean {
+    const clean = text.replace(/\s+/g, '')
+    if (!clean) return false
+    if (!STOP_TALK.test(clean)) return false
+    // 「没事了」「先这样吧」这种短句才收尾；长句里带这几个字多半是在说别的事
+    return clean.length <= 16
+  }
+
+  private sayFarewell(): void {
+    logInfo('voice', 'continuous: 收尾')
+    this.continuous = false
+    this.cancelContinue()
+    this.speak('好，有事再叫我。')
+    setTimeout(() => this.toIdle(), 2600)
   }
 
   private scheduleIdle(delay = 1200): void {
@@ -419,6 +554,7 @@ export class Voice {
 
   /** DSH 那一轮被打断 */
   interruptTurn(): void {
+    this.cancelContinue()
     void getBridge()
       .stopTurn()
       .catch((error) => logError('stopTurn', error))

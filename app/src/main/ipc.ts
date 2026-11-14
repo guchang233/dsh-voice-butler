@@ -1,9 +1,9 @@
-import { ipcMain } from 'electron'
+import { ipcMain, nativeTheme } from 'electron'
 import { z } from 'zod'
-import { IPC } from '../shared/ipc'
+import { IPC, type ThemeMode } from '../shared/ipc'
 import { getBridge } from './bridge'
 import { importCustomSkin, listCustomSkins, removeCustomSkin } from './customSkins'
-import { logError } from './log'
+import { logError, logInfo } from './log'
 import { saveApiKey, savePreferences, getSettings } from './store'
 import { getVoice } from './voice'
 import { broadcastSkin, endDrag, hidePanel, startDrag, togglePanel } from './windows'
@@ -14,8 +14,24 @@ const settingsPatch = z.object({
   micEnabled: z.boolean().optional(),
   ttsVoice: z.enum(['stella', 'tide']).optional(),
   bargeIn: z.boolean().optional(),
-  dshOrigin: z.string().max(300).optional()
+  dshOrigin: z.string().max(300).optional(),
+  theme: z.enum(['system', 'light', 'dark']).optional(),
+  continuous: z.boolean().optional()
 })
+
+/** 主题一改，三个窗口一起跟着变（CSS 里用的是 prefers-color-scheme） */
+export function applyTheme(mode: ThemeMode): void {
+  nativeTheme.themeSource = mode
+  logInfo('theme', mode)
+}
+
+/** 皮肤键必须是「内置的」或「确实导入过的」，否则退回鲸鱼娘 */
+function resolveSkinKey(key: string): string {
+  const clean = key.trim()
+  if (clean === 'whale' || clean === 'niang02') return clean
+  const known = listCustomSkins().some((item) => item.key === clean)
+  return known ? clean : 'whale'
+}
 
 /** 只校验语音接口能不能用（GET /models，不花钱），不涉及对话 */
 async function verifyKey(baseUrl: string, apiKey: string): Promise<void> {
@@ -63,9 +79,13 @@ export function registerIpc(): void {
       micEnabled: patch.micEnabled,
       ttsVoice: patch.ttsVoice,
       bargeIn: patch.bargeIn,
-      dshOrigin: patch.dshOrigin
+      dshOrigin: patch.dshOrigin,
+      theme: patch.theme,
+      continuous: patch.continuous
     })
     if (patch.micEnabled !== undefined) getVoice().setMicEnabled(patch.micEnabled)
+    if (patch.theme !== undefined) applyTheme(patch.theme)
+    if (patch.continuous !== undefined) getVoice().setContinuous(patch.continuous)
     return { ok: true as const }
   })
 
@@ -84,17 +104,41 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.panelHide, () => hidePanel())
 
   ipcMain.handle(IPC.skinGet, () => getSettings().skin)
-  ipcMain.handle(IPC.skinSet, (_e, skin: string) => {
-    savePreferences({ skin: skin as never })
-    const next = getSettings().skin
+
+  /** 换贴图：内置的两张 + 用户导入的都走这里；存进去的键必须真的存在 */
+  ipcMain.handle(IPC.skinSet, (_e, skin: unknown) => {
+    const parsed = z.string().max(80).safeParse(skin)
+    const next = resolveSkinKey(parsed.success ? parsed.data : 'whale')
+    savePreferences({ skin: next })
     broadcastSkin(next)
+    logInfo('skin', next)
     return next
   })
+
   ipcMain.handle(IPC.skinCatalog, () => listCustomSkins())
-  ipcMain.handle(IPC.skinImport, () => importCustomSkin())
+
+  /** 导入成功后直接换上，不用再点一次 */
+  ipcMain.handle(IPC.skinImport, async () => {
+    const result = await importCustomSkin()
+    if (result.ok && result.key) {
+      const next = resolveSkinKey(result.key)
+      savePreferences({ skin: next })
+      broadcastSkin(next)
+      return { ...result, key: next }
+    }
+    return result
+  })
+
+  /** 删掉的正好是当前那张，就退回鲸鱼娘 */
   ipcMain.handle(IPC.skinRemove, (_e, key: unknown) => {
     const parsed = z.string().max(80).safeParse(key)
-    return parsed.success ? removeCustomSkin(parsed.data) : false
+    if (!parsed.success) return false
+    const removed = removeCustomSkin(parsed.data)
+    if (removed && getSettings().skin === parsed.data) {
+      savePreferences({ skin: 'whale' })
+      broadcastSkin('whale')
+    }
+    return removed
   })
 
   ipcMain.on(IPC.ballDragStart, () => startDrag())

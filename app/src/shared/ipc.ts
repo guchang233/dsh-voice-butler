@@ -5,12 +5,16 @@
  * 对话逻辑、工具、确认闸门全在 DSH 里（插件 butler-bridge + 预设 管家模式）。
  */
 
-export type SkinKey = 'whale' | 'niang02'
+/** 皮肤 = 悬浮球上那张贴图。内置两张，其余是用户导入的（键名形如 user-xxxx） */
+export type SkinKey = 'whale' | 'niang02' | string
 
 export const SKINS: Array<{ key: SkinKey; label: string }> = [
   { key: 'whale', label: '鲸鱼娘' },
   { key: 'niang02', label: '鲸鱼娘 · 02' }
 ]
+
+/** 界面主题：跟随系统 / 纸（亮） / 墨（暗） */
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 export const WAKE_WORD = '大肥鱼'
 
@@ -100,6 +104,10 @@ export type VoiceFrame =
 
 export type PublicSettings = {
   skin: SkinKey
+  /** 界面主题（面板 / 悬浮球 / 顶层特效一起换） */
+  theme: ThemeMode
+  /** 连续对话：一轮说完直接接着听，不用再喊唤醒词 */
+  continuous: boolean
   /** 语音识别 / 合成用的 DeepSeek Key（对话不再用它） */
   hasKey: boolean
   baseUrl: string
@@ -121,6 +129,8 @@ export type SettingsPatch = {
   ttsVoice?: 'stella' | 'tide'
   bargeIn?: boolean
   dshOrigin?: string
+  theme?: ThemeMode
+  continuous?: boolean
 }
 
 export type VoiceStatus = {
