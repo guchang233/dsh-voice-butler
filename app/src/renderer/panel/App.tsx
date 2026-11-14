@@ -557,6 +557,12 @@ function SettingsView({
   const [bargeIn, setBargeIn] = useState(settings?.bargeIn ?? false)
   const [continuous, setContinuous] = useState(settings?.continuous ?? false)
   const [theme, setTheme] = useState<ThemeMode>(settings?.theme ?? 'system')
+  const [persona, setPersona] = useState('')
+  const [personaIsDefault, setPersonaIsDefault] = useState(true)
+  const [personaOpen, setPersonaOpen] = useState(false)
+  const [personaState, setPersonaState] = useState<{ kind: 'idle' | 'busy' | 'ok' | 'bad'; text: string }>(
+    { kind: 'idle', text: '' }
+  )
   const [state, setState] = useState<{ kind: 'idle' | 'busy' | 'ok' | 'bad'; text: string }>({
     kind: 'idle',
     text: ''
@@ -588,6 +594,38 @@ function SettingsView({
       const next = await window.api.getSettings()
       onSaved(next, '语音钥匙已清除')
     }
+  }
+
+  /* ------------------------------------------------------------ 人格提示词 */
+
+  useEffect(() => {
+    void window.api.getPersona().then((result) => {
+      setPersona(result.text ?? '')
+      setPersonaIsDefault(result.isDefault !== false)
+    })
+  }, [])
+
+  const savePersona = async (): Promise<void> => {
+    setPersonaState({ kind: 'busy', text: '保存中…' })
+    const result = await window.api.savePersona(persona)
+    if (!result.ok) {
+      setPersonaState({ kind: 'bad', text: result.error })
+      return
+    }
+    setPersona(result.text)
+    setPersonaIsDefault(result.isDefault)
+    setPersonaState({ kind: 'ok', text: '已保存，下一句就生效' })
+  }
+
+  const resetPersona = async (): Promise<void> => {
+    const result = await window.api.resetPersona()
+    if (!result.ok) {
+      setPersonaState({ kind: 'bad', text: result.error })
+      return
+    }
+    setPersona(result.text)
+    setPersonaIsDefault(true)
+    setPersonaState({ kind: 'ok', text: '已恢复内置人格' })
   }
 
   return (
@@ -712,6 +750,56 @@ function SettingsView({
           <span className="field-hint">
             点一下立刻换，悬浮球和面板一起换，下次启动还记着；自己导入的那几张可以右键改名或删掉。
           </span>
+        </div>
+
+        <div className="field">
+          <div className="field-head">
+            <span className="field-label">人格提示词</span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setPersonaOpen((open) => !open)}
+            >
+              {personaOpen ? '收起' : '编辑'}
+            </button>
+          </div>
+          {personaOpen ? (
+            <textarea
+              className="persona-box"
+              value={persona}
+              onChange={(event) => setPersona(event.target.value)}
+              spellCheck={false}
+              rows={14}
+            />
+          ) : (
+            <p className="persona-preview">
+              {persona.trim().replace(/\s+/g, ' ').slice(0, 110) || '（空）'}
+              {persona.length > 110 ? '…' : ''}
+            </p>
+          )}
+          <span className="field-hint">
+            {personaIsDefault ? '现在是内置人格（照着管家该有的脾气写的）。' : '现在是你自己写的人格。'}
+            这段排在整机提示词之后，最管用；改完下一句就生效，不用重启。
+          </span>
+          <div className="row-actions">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => void savePersona()}
+              disabled={personaState.kind === 'busy'}
+            >
+              保存人格
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void resetPersona()}>
+              恢复默认
+            </button>
+            <span className="persona-count">{persona.length} 字</span>
+          </div>
+          {personaState.text && (
+            <div className={personaState.kind === 'bad' ? 'toast bad' : 'toast ok'}>
+              {personaState.text}
+            </div>
+          )}
         </div>
 
         <label className="switch-row">

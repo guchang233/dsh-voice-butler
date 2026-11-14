@@ -9,7 +9,7 @@ import {
   type VoiceState,
   type VoiceStatus
 } from '../shared/ipc'
-import type { ButlerApi, Unsubscribe } from '../shared/api'
+import type { ButlerApi, PersonaRead, PersonaWrite, Unsubscribe } from '../shared/api'
 
 function subscribe<T>(channel: string, handler: (payload: T) => void): Unsubscribe {
   const listener = (_event: IpcRendererEvent, payload: T): void => handler(payload)
@@ -38,6 +38,10 @@ const api: ButlerApi = {
     ipcRenderer.invoke(IPC.voiceApprove, { id, allow }),
   newSession: (): Promise<Result> => ipcRenderer.invoke(IPC.voiceNew),
   status: (): Promise<VoiceStatus> => ipcRenderer.invoke(IPC.voiceStatus),
+
+  getPersona: (): Promise<PersonaRead> => ipcRenderer.invoke(IPC.personaGet),
+  savePersona: (text: string): Promise<PersonaWrite> => ipcRenderer.invoke(IPC.personaSave, text),
+  resetPersona: (): Promise<PersonaWrite> => ipcRenderer.invoke(IPC.personaReset),
 
   getSkin: (): Promise<string> => ipcRenderer.invoke(IPC.skinGet),
   setSkin: (skin: string): Promise<string> => ipcRenderer.invoke(IPC.skinSet, skin),

@@ -226,4 +226,39 @@ export function registerIpc(): void {
       lastError: bridge.lastError
     }
   })
+
+  /* ------------------------------------------------------------ 人格提示词 */
+
+  ipcMain.handle(IPC.personaGet, async () => {
+    try {
+      return await getBridge().getPersona()
+    } catch (error) {
+      logError('personaGet', error)
+      return { text: '', isDefault: true, error: String((error as Error)?.message ?? error) }
+    }
+  })
+
+  ipcMain.handle(IPC.personaSave, async (_event, raw: unknown) => {
+    const parsed = z.string().max(200_000).safeParse(raw)
+    if (!parsed.success) return { ok: false as const, error: '内容太长或格式不对' }
+    try {
+      const result = await getBridge().savePersona(parsed.data)
+      logInfo('persona', 'saved ' + parsed.data.length + ' chars')
+      return { ok: true as const, ...result }
+    } catch (error) {
+      logError('personaSave', error)
+      return { ok: false as const, error: String((error as Error)?.message ?? error) }
+    }
+  })
+
+  ipcMain.handle(IPC.personaReset, async () => {
+    try {
+      const result = await getBridge().resetPersona()
+      logInfo('persona', 'reset to default')
+      return { ok: true as const, ...result }
+    } catch (error) {
+      logError('personaReset', error)
+      return { ok: false as const, error: String((error as Error)?.message ?? error) }
+    }
+  })
 }

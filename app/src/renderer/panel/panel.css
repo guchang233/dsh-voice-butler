@@ -1093,3 +1093,48 @@ button:disabled {
 .skin-grid {
   grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
 }
+
+/* ------------------------------------------------------------ 人格提示词 */
+
+.field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.persona-preview {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--c-soft);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--c-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.persona-box {
+  width: 100%;
+  min-width: 0;
+  min-height: 220px;
+  max-height: 420px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-line);
+  border-radius: 10px;
+  background: var(--c-card);
+  color: var(--c-ink);
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+.persona-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--c-faint);
+}

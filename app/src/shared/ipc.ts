@@ -55,6 +55,11 @@ export const IPC = {
   voiceHistory: 'voice:history',
   voiceReset: 'voice:reset',
 
+  /* 人格提示词 */
+  personaGet: 'persona:get',
+  personaSave: 'persona:save',
+  personaReset: 'persona:reset',
+
   /* 皮肤 */
   skinGet: 'skin:get',
   skinSet: 'skin:set',

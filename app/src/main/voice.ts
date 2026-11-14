@@ -28,6 +28,13 @@ const CONTINUOUS_IDLE_MS = 15_000
 const YES = /(可以|行|好|嗯|对|是|确认|同意|继续|放行|ok|yes|okay|开吧|关吧|删吧)/i
 const NO = /(别|不|取消|算了|不要|停|等等|no)/i
 
+/** 「大肥鱼 / 大飞鱼」这类识别变体：打断时那句话开头常带着它 */
+const WAKE_LEAD = /^\s*(大\s*[肥飞鲱非菲]\s*鱼|大肥鱼|大飞鱼)[\s，,。.、！!？?~～…]*/i
+
+function stripWakeWord(text: string): string {
+  return text.replace(WAKE_LEAD, '').trim()
+}
+
 /** 连续对话里的收尾话术：听到就结束这一轮对话，不用再喊唤醒词 */
 const STOP_TALK = /(没事了|没事啦|没事|没有了|没了|先这样|就这样|不用了|不要了|拜拜|再见|退下|结束对话|够了|歇着吧)/
 
@@ -39,7 +46,10 @@ type Capture = {
 }
 
 export class Voice {
+  /** 待机时用的唤醒词引擎（标准灵敏度） */
   private watcher: KeywordWatcher | null = null
+  /** 播报 / 思考时用的引擎：门限更低，方便一句话把管家打断 */
+  private bargeWatcher: KeywordWatcher | null = null
   private endpointer = createEndpointer({ maxMs: MAX_UTTERANCE_MS })
   private state: VoiceState = 'idle'
   private preroll: Int16Array[] = []
@@ -94,7 +104,9 @@ export class Voice {
   }
 
   start(): void {
-    this.watcher = createKeywordWatcher()
+    this.watcher = createKeywordWatcher({ label: 'kws' })
+    // 播报时自己的声音会盖住人声，标准门限经常打不着——这里单独一个更灵敏的
+    this.bargeWatcher = createKeywordWatcher({ score: 1.2, threshold: 0.12, label: 'kws-barge' })
     this.micEnabled = getSettings().micEnabled
     this.continuous = getSettings().continuous
     this.broadcast()
@@ -187,30 +199,31 @@ export class Voice {
       return
     }
 
-    if (this.state === 'speaking') {
-      // 唤醒词永远可以打断：这条最可靠，也不会被自己的播放声骗到
-      if (this.watcher) {
-        const keyword = this.watcher.feed(chunk)
-        if (keyword) {
-          logInfo('voice', 'barge-in: 唤醒词「' + keyword + '」')
-          this.bargeIn = 0
-          this.triggerWake(keyword)
-          return
-        }
-      }
-      // 能量插话（默认关）：要求更响、更久，避免扬声器回声把播报掐断
-      if (getSettings().bargeIn && now - this.startedSpeakingAt > 800 && rms(chunk) > 0.2) {
-        this.bargeIn += 1
-        if (this.bargeIn >= 8) {
-          logInfo(
-            'voice',
-            `barge-in: 用户插话了（level=${rms(chunk).toFixed(3)}，${this.bargeIn} 片），停止播报`
-          )
-          this.bargeIn = 0
-          this.interruptForListen()
-        }
-      } else if (rms(chunk) < 0.05) {
+    if (this.state === 'speaking' || this.state === 'thinking') {
+      // 播报中 / 思考中都能一句话打断：用更灵敏的那个引擎，命中就立刻停嘴去听
+      const keyword = this.bargeWatcher?.feed(chunk) ?? null
+      if (keyword) {
+        logInfo('voice', 'barge-in: 唤醒词「' + keyword + '」，立刻停下听你说')
         this.bargeIn = 0
+        this.triggerWake(keyword)
+        return
+      }
+
+      if (this.state === 'speaking') {
+        // 能量插话（默认关）：要求更响、更久，避免扬声器回声把播报掐断
+        if (getSettings().bargeIn && now - this.startedSpeakingAt > 800 && rms(chunk) > 0.2) {
+          this.bargeIn += 1
+          if (this.bargeIn >= 8) {
+            logInfo(
+              'voice',
+              `barge-in: 用户插话了（level=${rms(chunk).toFixed(3)}，${this.bargeIn} 片），停止播报`
+            )
+            this.bargeIn = 0
+            this.interruptForListen()
+          }
+        } else if (rms(chunk) < 0.05) {
+          this.bargeIn = 0
+        }
       }
       return
     }
@@ -238,6 +251,8 @@ export class Voice {
     // 上一段连续对话可能说了「没事了」提前收尾；再叫醒时按设置恢复
     this.continuous = getSettings().continuous
     this.mutePlayback()
+    // 刚从待机跳出来，把待机引擎的旧音频倒掉；播报引擎则等回到待机前不再喂
+    this.watcher?.reset()
     this.beginListening()
     this.send(IPC.wake, { text: keyword })
     showPanel()
@@ -248,6 +263,7 @@ export class Voice {
     this.utterance = [...this.preroll]
     this.preroll = []
     this.prerollMs = 0
+    this.bargeWatcher?.reset()
     this.setState('listening')
   }
 
@@ -325,13 +341,25 @@ export class Voice {
       return
     }
 
+    // 打断时那句话里通常带着唤醒词（「大肥鱼，帮我关掉音乐」），去掉再送 DSH
+    const said = stripWakeWord(text)
+    if (!said) {
+      logInfo('voice', '只听清了唤醒词，接着等你说话')
+      if (this.continuous) {
+        this.beginListening()
+      } else {
+        this.toIdle()
+      }
+      return
+    }
+
     // 连续对话里的收尾话术：不进 DSH，直接结束这一段对话
-    if (this.continuous && this.isStopTalk(text)) {
+    if (this.continuous && this.isStopTalk(said)) {
       this.sayFarewell()
       return
     }
 
-    await this.deliver(text)
+    await this.deliver(said)
   }
 
   /** 把一句话交给 DSH（打字和说话都走这里） */

@@ -54,7 +54,9 @@ export async function runWakeWordSelfTest(): Promise<void> {
     return
   }
 
-  const watcher = createKeywordWatcher()
+  const watcher = createKeywordWatcher({ label: 'kws-selftest' })
+  // 播报中用的那个更灵敏的引擎也一起验一遍：它要是认不出唤醒词，打断就是摆设
+  const bargeWatcher = createKeywordWatcher({ score: 1.2, threshold: 0.12, label: 'kws-barge-selftest' })
   if (!watcher) {
     logError('selftest', '唤醒词引擎未就绪')
     return
@@ -93,17 +95,23 @@ export async function runWakeWordSelfTest(): Promise<void> {
     }
 
     let hit: string | null = null
+    let bargeHit: string | null = null
     for (let offset = 0; offset < padded.length; offset += 1600) {
       const chunk = padded.subarray(offset, Math.min(offset + 1600, padded.length))
-      const result = watcher.feed(chunk)
-      if (result) {
-        hit = result
-        break
+      if (!hit) {
+        const result = watcher.feed(chunk)
+        if (result) hit = result
       }
+      if (bargeWatcher && !bargeHit) {
+        const result = bargeWatcher.feed(chunk)
+        if (result) bargeHit = result
+      }
+      if (hit && (bargeHit || !bargeWatcher)) break
     }
     logInfo(
       'selftest',
-      `唤醒词自测：${padded.length} 样本 → ${hit ? '命中 ' + hit : '未命中'}`
+      `唤醒词自测：${padded.length} 样本 → 待机引擎 ${hit ? '命中 ' + hit : '未命中'}；` +
+        `播报引擎 ${bargeWatcher ? (bargeHit ? '命中 ' + bargeHit : '未命中') : '（未就绪）'}`
     )
 
     // 顺手验证 ASR：把同一段音频送云端识别，看回来是不是「大肥鱼」

@@ -122,6 +122,42 @@ export class DshBridge {
     this.cursor = -1
   }
 
+  /* ------------------------------------------------------------ 人格提示词 */
+
+  async getPersona(): Promise<{ text: string; isDefault: boolean }> {
+    const origin = this.origin || this.resolveOrigin()
+    const res = await fetch(`${origin}/voice/persona`, { signal: AbortSignal.timeout(15_000) })
+    if (!res.ok) throw new Error(`读人格失败（HTTP ${res.status}）`)
+    const body = (await res.json()) as { text?: string; isDefault?: boolean }
+    return { text: String(body.text ?? ''), isDefault: body.isDefault !== false }
+  }
+
+  async savePersona(text: string): Promise<{ text: string; isDefault: boolean }> {
+    const origin = this.origin || this.resolveOrigin()
+    const res = await fetch(`${origin}/voice/persona`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(20_000)
+    })
+    const body = (await res.json()) as { ok?: boolean; text?: string; isDefault?: boolean; error?: string }
+    if (!res.ok || body.ok === false) throw new Error(body.error || `保存人格失败（HTTP ${res.status}）`)
+    return { text: String(body.text ?? ''), isDefault: body.isDefault === true }
+  }
+
+  async resetPersona(): Promise<{ text: string; isDefault: boolean }> {
+    const origin = this.origin || this.resolveOrigin()
+    const res = await fetch(`${origin}/voice/persona-reset`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      body: '{}',
+      signal: AbortSignal.timeout(15_000)
+    })
+    const body = (await res.json()) as { ok?: boolean; text?: string; error?: string }
+    if (!res.ok || body.ok === false) throw new Error(body.error || `恢复默认失败（HTTP ${res.status}）`)
+    return { text: String(body.text ?? ''), isDefault: true }
+  }
+
   /* ------------------------------------------------------------------ 内部 */
 
   private setLink(next: LinkState): void {

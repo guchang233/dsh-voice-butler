@@ -10,6 +10,12 @@ import type {
 
 export type Unsubscribe = () => void
 
+/** 人格提示词的读取 / 保存结果 */
+export type PersonaRead = { text: string; isDefault: boolean; error?: string }
+export type PersonaWrite =
+  | { ok: true; text: string; isDefault: boolean }
+  | { ok: false; error: string }
+
 /** preload 通过 contextBridge 暴露到 window.api 的完整形状 */
 export type ButlerApi = {
   getSettings: () => Promise<PublicSettings>
@@ -32,6 +38,11 @@ export type ButlerApi = {
   approve: (id: string, allow: boolean) => Promise<Result>
   newSession: () => Promise<Result>
   status: () => Promise<VoiceStatus>
+
+  /* 人格提示词（存在 DSH 那边，改完下一句生效） */
+  getPersona: () => Promise<PersonaRead>
+  savePersona: (text: string) => Promise<PersonaWrite>
+  resetPersona: () => Promise<PersonaWrite>
 
   getSkin: () => Promise<string>
   setSkin: (skin: string) => Promise<string>

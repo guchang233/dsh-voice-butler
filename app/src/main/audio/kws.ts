@@ -29,15 +29,28 @@ export function modelDir(): string {
 
 export type KeywordWatcher = {
   feed: (samples: Int16Array) => string | null
+  reset: () => void
   close: () => void
   keywordText: string
+}
+
+export type KeywordOptions = {
+  /** 越大越容易命中；关键词分数（默认 2.0） */
+  score?: number
+  /** 触发门限，越小越灵敏（默认 0.25） */
+  threshold?: number
+  /** 日志里区分用 */
+  label?: string
 }
 
 /**
  * 本地离线唤醒词检测。模型是 zipformer transducer，解码端只允许 keywords.txt 里的那几串音。
  * 任何一步失败都返回 null —— 没有唤醒词也要能靠点鲸鱼用。
+ *
+ * 播报中要用的那个实例会把门限调低（扬声器声音盖住人声，标准门限经常打不着），
+ * 代价是可能偶尔误触发——而误触发的后果只是「提前停嘴」，可以接受。
  */
-export function createKeywordWatcher(): KeywordWatcher | null {
+export function createKeywordWatcher(options?: KeywordOptions): KeywordWatcher | null {
   const dir = modelDir()
   const files = {
     encoder: join(dir, 'encoder-epoch-12-avg-2-chunk-16-left-64.onnx'),
@@ -53,6 +66,10 @@ export function createKeywordWatcher(): KeywordWatcher | null {
     }
   }
 
+  const score = options?.score ?? 2.0
+  const threshold = options?.threshold ?? 0.25
+  const label = options?.label ?? 'kws'
+
   try {
     const sherpa = requireCjs('sherpa-onnx-node')
     const spotter: SpotterLike = new sherpa.KeywordSpotter({
@@ -65,8 +82,8 @@ export function createKeywordWatcher(): KeywordWatcher | null {
         debug: 0
       },
       keywordsFile: files.keywords,
-      keywordsScore: 2.0,
-      keywordsThreshold: 0.25,
+      keywordsScore: score,
+      keywordsThreshold: threshold,
       maxActivePaths: 4,
       numTrailingBlanks: 2
     })
@@ -77,10 +94,22 @@ export function createKeywordWatcher(): KeywordWatcher | null {
     stream.acceptWaveform({ sampleRate: 16000, samples: new Float32Array(8000) })
     while (spotter.isReady(stream)) spotter.decode(stream)
 
-    logInfo('kws', '唤醒词引擎就绪：' + WAKE_WORD_TEXT)
+    logInfo('kws', `${label} 就绪：${WAKE_WORD_TEXT}（score=${score} threshold=${threshold}）`)
+
+    const reset = (): void => {
+      try {
+        spotter.reset(stream)
+        // 重置会清掉缓冲区，补一段静音垫底，否则紧接着再喊一次会漏
+        stream.acceptWaveform({ sampleRate: 16000, samples: new Float32Array(6400) })
+        while (spotter.isReady(stream)) spotter.decode(stream)
+      } catch {
+        /* 重置失败无所谓 */
+      }
+    }
 
     return {
       keywordText: WAKE_WORD_TEXT,
+      reset,
       feed(samples) {
         try {
           const floats = new Float32Array(samples.length)
@@ -89,15 +118,12 @@ export function createKeywordWatcher(): KeywordWatcher | null {
           while (spotter.isReady(stream)) spotter.decode(stream)
           const result = spotter.getResult(stream)
           if (result?.keyword) {
-            spotter.reset(stream)
-            // 重置会清掉缓冲区，补一段静音垫底，否则紧接着再喊一次会漏
-            stream.acceptWaveform({ sampleRate: 16000, samples: new Float32Array(6400) })
-            while (spotter.isReady(stream)) spotter.decode(stream)
+            reset()
             return result.keyword
           }
           return null
         } catch (error) {
-          logError('kws feed', error)
+          logError(`${label} feed`, error)
           return null
         }
       },
@@ -110,7 +136,7 @@ export function createKeywordWatcher(): KeywordWatcher | null {
       }
     }
   } catch (error) {
-    logError('kws 初始化失败', error)
+    logError(`${label} 初始化失败`, error)
     return null
   }
 }
