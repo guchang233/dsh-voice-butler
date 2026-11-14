@@ -52,6 +52,10 @@ export type ButlerApi = {
   onWake: (handler: (payload: { text?: string }) => void) => Unsubscribe
   onSpeechChunk: (handler: (chunk: ArrayBuffer) => void) => Unsubscribe
   onSpeechEnd: (handler: () => void) => Unsubscribe
+  /** 球窗播完最后一段音频后回 main：别再靠字数估时长了 */
+  notifySpeechEnd: () => void
+  /** main 要立刻静音（唤醒 / 插话 / 打断）时推给球窗 */
+  onSpeechStop: (handler: () => void) => Unsubscribe
   onAsrText: (handler: (payload: { text: string }) => void) => Unsubscribe
 
   onFrame: (handler: (frame: VoiceFrame) => void) => Unsubscribe

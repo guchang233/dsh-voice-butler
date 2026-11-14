@@ -73,6 +73,8 @@ const api: ButlerApi = {
   onWake: (handler) => subscribe<{ text?: string }>(IPC.wake, handler),
   onSpeechChunk: (handler) => subscribe<ArrayBuffer>(IPC.speechChunk, handler),
   onSpeechEnd: (handler) => subscribe<null>(IPC.speechEnd, () => handler()),
+  notifySpeechEnd: (): void => ipcRenderer.send(IPC.speechDrained),
+  onSpeechStop: (handler) => subscribe<null>(IPC.speechStop, () => handler()),
   onAsrText: (handler) => subscribe<{ text: string }>(IPC.asrText, handler),
 
   onFrame: (handler) => subscribe<VoiceFrame>(IPC.voiceFrame, handler),

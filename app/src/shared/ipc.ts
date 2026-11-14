@@ -37,6 +37,9 @@ export const IPC = {
   micEnabled: 'mic:enabled',
   speechChunk: 'speech:chunk',
   speechEnd: 'speech:end',
+  speechStop: 'speech:stop',
+  /** 球窗 → main：最后一段音频真的播完了 */
+  speechDrained: 'speech:drained',
   wake: 'voice:wake',
   asrText: 'asr:text',
   voiceState: 'butler:state',

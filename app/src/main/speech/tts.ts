@@ -27,6 +27,8 @@ export class TtsQueue {
     this.chain = this.chain
       .then(() => this.run(cleaned))
       .catch((error) => {
+        // stop() 主动中止的那次读流不算错误
+        if ((error as { name?: string })?.name === 'AbortError') return
         if (!this.controller.signal.aborted) this.onError(error)
       })
   }
@@ -59,8 +61,11 @@ export class TtsQueue {
     })
 
     if (!res.ok || !res.body) {
-      // 400 表示这句念不出来，跳过它继续下一句
-      if (res.status === 400) return
+      // 400 表示这句念不出来：跳过它继续下一句，但要留痕（不然听起来就是「话说一半没了」）
+      if (res.status === 400) {
+        this.onError(new Error('这句念不出来，已跳过：' + text.slice(0, 24)))
+        return
+      }
       throw new Error(`语音合成失败（HTTP ${res.status}）`)
     }
 

@@ -63,14 +63,32 @@ export class Voice {
   private listenDeadline: NodeJS.Timeout | null = null
   /** 这一轮连续收音最晚管到什么时候（没听清就重听，但不超过这个时刻） */
   private continuousArmedUntil = 0
-  private speakEndsAt = 0
+  /** 球窗那边是不是已经播空了（靠 IPC 回报，不再用字数估时长） */
+  private playbackIdle = true
+  private drainWatchdog: NodeJS.Timeout | null = null
+  /** 这一轮下发了多少片音频（诊断用） */
+  private chunkCount = 0
+  private lastChunkAt = 0
+  /** 按已下发字节数推出来的「应该播完」的墙钟时刻 */
+  private audioEndsAt = 0
+
   private runningTurn = false
 
   constructor() {
     this.tts = new TtsQueue(
       () => ({ baseUrl: getSettings().baseUrl, apiKey: getApiKey(), voice: getSettings().ttsVoice }),
-      (pcm) =>
-        this.send(IPC.speechChunk, pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength)),
+      (pcm) => {
+        this.chunkCount += 1
+        this.lastChunkAt = Date.now()
+        // 主进程自己算播放进度：球窗的定时器在后台会被 Chromium 节流，靠不住
+        const durationMs = (pcm.byteLength / 2 / TTS_SAMPLE_RATE) * 1000
+        this.audioEndsAt = Math.max(Date.now(), this.audioEndsAt) + durationMs
+        if (this.chunkCount === 1) {
+          logInfo('voice', `tts: 第一片音频 ${Math.round(durationMs)}ms → ball=${Boolean(getBall())}`)
+        }
+        this.send(IPC.speechChunk, pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength))
+        this.scheduleDrainCheck()
+      },
       (error) => logError('tts', error)
     )
   }
@@ -180,15 +198,18 @@ export class Voice {
           return
         }
       }
-      // 能量插话（默认关）：要求更响、更久，避免扬声器回声自触发
-      if (getSettings().bargeIn && now - this.startedSpeakingAt > 600 && rms(chunk) > 0.12) {
+      // 能量插话（默认关）：要求更响、更久，避免扬声器回声把播报掐断
+      if (getSettings().bargeIn && now - this.startedSpeakingAt > 800 && rms(chunk) > 0.2) {
         this.bargeIn += 1
-        if (this.bargeIn >= 6) {
-          logInfo('voice', 'barge-in: 用户插话了，停止播报')
+        if (this.bargeIn >= 8) {
+          logInfo(
+            'voice',
+            `barge-in: 用户插话了（level=${rms(chunk).toFixed(3)}，${this.bargeIn} 片），停止播报`
+          )
           this.bargeIn = 0
           this.interruptForListen()
         }
-      } else if (rms(chunk) < 0.03) {
+      } else if (rms(chunk) < 0.05) {
         this.bargeIn = 0
       }
       return
@@ -216,7 +237,7 @@ export class Voice {
     this.cancelContinue()
     // 上一段连续对话可能说了「没事了」提前收尾；再叫醒时按设置恢复
     this.continuous = getSettings().continuous
-    this.tts.stop()
+    this.mutePlayback()
     this.beginListening()
     this.send(IPC.wake, { text: keyword })
     showPanel()
@@ -231,7 +252,7 @@ export class Voice {
   }
 
   private interruptForListen(): void {
-    this.tts.stop()
+    this.mutePlayback()
     this.startedSpeakingAt = 0
     this.beginListening()
   }
@@ -318,8 +339,8 @@ export class Voice {
     const clean = text.trim()
     if (!clean) return
     this.cancelContinue()
-    this.speakEndsAt = 0
     this.spokenChars = 0
+    this.chunkCount = 0
     this.chunker = new SentenceChunker()
     try {
       await getBridge().say(clean)
@@ -422,19 +443,68 @@ export class Voice {
     if (!clean) return
     this.spokenChars += clean.length
     this.startedSpeakingAt = Date.now()
+    this.playbackIdle = false
     this.setState('speaking')
-    // 粗估这句话念完的时刻（中文约每秒 4~5 个字），连续对话靠它排队接话
-    const estimate = Math.max(600, Math.min(12_000, clean.length * 230))
-    this.speakEndsAt = Math.max(Date.now(), this.speakEndsAt) + estimate
     this.tts.say(clean)
+    this.scheduleDrainCheck()
+  }
+
+  /**
+   * 「说完了」由主进程自己判断：每下发一片音频就把播完时刻往后推这片时长，
+   * 到点了就算播完（球窗的回报优先，但它那边的 setTimeout 在后台会被节流，不能只靠它）。
+   */
+  private scheduleDrainCheck(): void {
+    if (this.drainWatchdog) clearTimeout(this.drainWatchdog)
+    const wait = Math.max(80, this.audioEndsAt + 260 - Date.now())
+    this.drainWatchdog = setTimeout(() => this.checkDrain(), Math.min(wait, 3000))
+  }
+
+  private checkDrain(): void {
+    this.drainWatchdog = null
+    if (this.playbackIdle) return
+
+    // 这一轮压根没有音频（合成失败 / 空文本）：没什么可等的
+    if (this.chunkCount === 0) {
+      const waited = Date.now() - this.startedSpeakingAt
+      if (waited < 2500) {
+        this.drainWatchdog = setTimeout(() => this.checkDrain(), 600)
+        return
+      }
+      logError('voice', '这一轮没有音频下发，按已播完处理')
+      this.onPlaybackIdle()
+      return
+    }
+
+    const remain = this.audioEndsAt + 260 - Date.now()
+    if (remain > 0) {
+      this.drainWatchdog = setTimeout(() => this.checkDrain(), Math.min(Math.max(80, remain), 3000))
+      return
+    }
+    this.onPlaybackIdle()
+  }
+
+  /** 球窗播空了（IPC.speechDrained）：这才是「真的说完了」 */
+  onPlaybackIdle(): void {
+    if (this.drainWatchdog) {
+      clearTimeout(this.drainWatchdog)
+      this.drainWatchdog = null
+    }
+    if (this.playbackIdle) return
+    this.playbackIdle = true
+    logInfo('voice', 'playback drained')
+    if (this.state === 'speaking') this.setState(this.link === 'offline' ? 'offline' : 'idle')
+    this.scheduleContinue()
   }
 
   /** 直接念一句（本地提示音性质的话，不进会话） */
   speakNow(text: string): void {
     this.spokenChars += text.length
     this.startedSpeakingAt = Date.now()
+    this.playbackIdle = false
     this.setState('speaking')
     this.tts.say(text)
+    // 这句话也要能被判成「播完了」，否则状态会卡在 speaking
+    this.scheduleDrainCheck()
     this.scheduleIdle(2500)
   }
 
@@ -462,24 +532,29 @@ export class Voice {
     if (this.runningTurn) return
 
     const now = Date.now()
-    if (this.state === 'speaking' || now < this.speakEndsAt) {
+    // 关键：等球窗真的播空（以前按字数估，估早了就自动开麦，球窗一进 listening 就把还在播的音频掐了）
+    if (this.state === 'speaking' || !this.playbackIdle) {
       if (now > deadline) return
-      this.continueTimer = setTimeout(() => this.continueAttempt(deadline), 350)
+      this.continueTimer = setTimeout(() => this.continueAttempt(deadline), 300)
       return
     }
     if (now > deadline) return
 
-    logInfo('voice', 'continuous: 接着听')
-    this.beginListening()
-    this.continuousArmedUntil = Date.now() + CONTINUOUS_IDLE_MS
-    if (this.listenDeadline) clearTimeout(this.listenDeadline)
-    this.listenDeadline = setTimeout(() => {
-      this.listenDeadline = null
-      if (this.state === 'listening') {
-        logInfo('voice', 'continuous: 15 秒没人说话，退回去等唤醒词')
-        this.toIdle()
-      }
-    }, CONTINUOUS_IDLE_MS)
+    this.continueTimer = setTimeout(() => {
+      this.continueTimer = null
+      if (!this.continuous || this.state === 'listening' || this.runningTurn) return
+      logInfo('voice', 'continuous: 接着听')
+      this.beginListening()
+      this.continuousArmedUntil = Date.now() + CONTINUOUS_IDLE_MS
+      if (this.listenDeadline) clearTimeout(this.listenDeadline)
+      this.listenDeadline = setTimeout(() => {
+        this.listenDeadline = null
+        if (this.state === 'listening') {
+          logInfo('voice', 'continuous: 15 秒没人说话，退回去等唤醒词')
+          this.toIdle()
+        }
+      }, CONTINUOUS_IDLE_MS)
+    }, 260)
   }
 
   /**
@@ -526,8 +601,18 @@ export class Voice {
 
   private scheduleIdle(delay = 1200): void {
     setTimeout(() => {
-      if (this.state === 'speaking' || this.state === 'thinking') this.toIdle()
+      if (this.state !== 'speaking' && this.state !== 'thinking') return
+      // 还在播就等 onPlaybackIdle 收尾；别让状态先变成 idle
+      if (!this.playbackIdle) return
+      this.toIdle()
     }, delay)
+  }
+
+  /** 真正要静音（唤醒 / 插话 / 面板停止）：连已经在播的缓冲一起掐掉 */
+  private mutePlayback(): void {
+    this.tts.stop()
+    this.playbackIdle = false
+    this.send(IPC.speechStop, null)
   }
 
   /* ---------------------------------------------------------- 录音/打断 */
@@ -548,7 +633,7 @@ export class Voice {
   }
 
   interrupt(): void {
-    this.tts.stop()
+    this.mutePlayback()
     this.toIdle()
   }
 
@@ -558,7 +643,7 @@ export class Voice {
     void getBridge()
       .stopTurn()
       .catch((error) => logError('stopTurn', error))
-    this.tts.stop()
+    this.mutePlayback()
     this.scheduleIdle(400)
   }
 
@@ -568,7 +653,7 @@ export class Voice {
   }
 
   stopPlaybackOnly(): void {
-    this.tts.stop()
+    this.mutePlayback()
   }
 }
 

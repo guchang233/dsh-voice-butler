@@ -162,6 +162,12 @@ export function registerIpc(): void {
     getVoice().setMicEnabled(enabled === true)
   })
 
+  /** 球窗报告：最后一段音频播完了（连续对话等这个信号才开麦） */
+  ipcMain.on(IPC.speechDrained, () => {
+    logInfo('ipc', 'speech drained（球窗回报）')
+    getVoice().onPlaybackIdle()
+  })
+
   /* --------------------------------------------------- 与 DSH 的四个动作 */
 
   ipcMain.handle(IPC.voiceSay, async (_event, raw: unknown) => {
