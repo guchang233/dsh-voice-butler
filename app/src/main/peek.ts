@@ -26,13 +26,13 @@ async function fetchBalance(): Promise<Balance> {
   try {
     const res = await fetch(`${base}/user/balance`, {
       headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) {
       const map: Record<number, string> = {
         401: '钥匙无效（401）',
         402: '账户不可用（402）',
-        429: '请求太频繁（429）'
+        429: '请求太频繁（429）',
       }
       return { ok: false, error: map[res.status] ?? `取余额失败（HTTP ${res.status}）` }
     }
@@ -54,7 +54,7 @@ async function fetchBalance(): Promise<Balance> {
       total: info.total_balance ?? '0',
       granted: info.granted_balance ?? '0',
       toppedUp: info.topped_up_balance ?? '0',
-      available: body.is_available !== false
+      available: body.is_available !== false,
     }
   } catch (error) {
     logError('peek.balance', error)

@@ -27,27 +27,34 @@ function writeIndex(rows: IndexRow[]): void {
   fs.writeFileSync(indexFile(), JSON.stringify(rows, null, 2), 'utf8')
 }
 
-function mimeOf(file: string): string {
-  const ext = path.extname(file).toLowerCase()
-  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
-  if (ext === '.webp') return 'image/webp'
-  if (ext === '.gif') return 'image/gif'
-  return 'image/png'
+/** 渲染层用自定义协议拉图，不再把整文件 base64 塞进 IPC */
+export function customSkinUrl(key: string): string {
+  return `butler-skin://asset/${encodeURIComponent(key)}`
 }
 
-/** 列出所有自定义贴图，带 data URL（渲染层直接用） */
+export function resolveCustomSkinFile(requestUrl: string): string | null {
+  let key = ''
+  try {
+    const url = new URL(requestUrl)
+    key = decodeURIComponent(url.pathname.replace(/^\/+/, ''))
+  } catch {
+    return null
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(key)) return null
+  const row = readIndex().find((item) => item.key === key)
+  if (!row) return null
+  const full = path.join(dir(), row.file)
+  return fs.existsSync(full) ? full : null
+}
+
+/** 列出所有自定义贴图。url 是 butler-skin 协议，文件留在主进程读 */
 export function listCustomSkins(): Array<CustomSkin & { url: string }> {
   const rows = readIndex()
   const out: Array<CustomSkin & { url: string }> = []
   for (const row of rows) {
-    try {
-      const full = path.join(dir(), row.file)
-      if (!fs.existsSync(full)) continue
-      const buf = fs.readFileSync(full)
-      out.push({ key: row.key, label: row.label, url: `data:${mimeOf(full)};base64,${buf.toString('base64')}` })
-    } catch (error) {
-      logError('customSkins.read', row.file, error)
-    }
+    const full = path.join(dir(), row.file)
+    if (!fs.existsSync(full)) continue
+    out.push({ key: row.key, label: row.label, url: customSkinUrl(row.key) })
   }
   return out
 }
@@ -59,13 +66,13 @@ export async function importCustomSkin(): Promise<{ ok: boolean; key?: string; l
     ? await dialog.showOpenDialog(parent, {
         title: '选一张当管家的贴图',
         properties: ['openFile'],
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
       })
     : await dialog.showOpenDialog({
-    title: '选一张当管家的贴图',
-    properties: ['openFile'],
-    filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
-  })
+        title: '选一张当管家的贴图',
+        properties: ['openFile'],
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      })
   if (picked.canceled || !picked.filePaths.length) return { ok: false, error: 'cancelled' }
 
   const source = picked.filePaths[0]

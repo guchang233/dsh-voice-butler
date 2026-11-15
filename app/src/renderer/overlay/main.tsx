@@ -5,5 +5,5 @@ import Overlay from './Overlay'
 createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <Overlay />
-  </React.StrictMode>
+  </React.StrictMode>,
 )

@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { nextBackoff } from '../shared/backoff'
 import type { LinkState, VoiceFrame } from '../shared/ipc'
 import { logError, logInfo } from './log'
 import { getSettings } from './store'
@@ -20,7 +21,7 @@ const FALLBACK_ORIGIN = 'http://127.0.0.1:63563'
 
 const POLL_WAIT_MS = 20_000
 const POLL_TIMEOUT_MS = 32_000
-const RETRY_MS = 1500
+const RETRY_BASE_MS = 1500
 
 type Handler = {
   frame: (frame: VoiceFrame) => void
@@ -29,13 +30,14 @@ type Handler = {
   link: (link: LinkState, origin: string) => void
 }
 
-function readOriginFrom(file: string): string {
+function readEndpointFile(file: string): { origin: string; token: string } {
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { origin?: string }
-    const origin = typeof parsed.origin === 'string' ? parsed.origin.trim() : ''
-    return origin.replace(/\/+$/, '')
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { origin?: string; token?: string }
+    const origin = typeof parsed.origin === 'string' ? parsed.origin.trim().replace(/\/+$/, '') : ''
+    const token = typeof parsed.token === 'string' ? parsed.token.trim() : ''
+    return { origin, token }
   } catch {
-    return ''
+    return { origin: '', token: '' }
   }
 }
 
@@ -43,7 +45,10 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 export class DshBridge {
   private origin = ''
+  private token = ''
   private cursor = -1
+  /** 0 表示还没跟上桥的世代；换会话时桥会把 epoch +1 */
+  private epoch = 0
   private running = false
   private link: LinkState = 'connecting'
   private sessionId: string | null = null
@@ -53,18 +58,34 @@ export class DshBridge {
   private lastError: string | null = null
   private handler: Handler | null = null
   private loopPromise: Promise<void> | null = null
+  private retryMs = RETRY_BASE_MS
+
+  /** 每次请求前重读 endpoint：令牌和端口都可能被桥换掉 */
+  private reloadEndpoint(): void {
+    const live = readEndpointFile(ENDPOINT_FILE)
+    if (live.token) this.token = live.token
+    const manual = getSettings().dshOrigin.trim().replace(/\/+$/, '')
+    if (manual) {
+      this.origin = manual
+      return
+    }
+    if (live.origin) {
+      this.origin = live.origin
+      return
+    }
+    const shell = readEndpointFile(SHELL_FILE).origin
+    if (shell) {
+      this.origin = shell
+      return
+    }
+    const env = (process.env['BUTLER_DSH_ORIGIN'] ?? '').trim().replace(/\/+$/, '')
+    this.origin = env || this.origin || FALLBACK_ORIGIN
+  }
 
   /** 挑一个能用的 DSH 地址：手填的 > 桥写的 endpoint > 守护写的 shell > 默认端口 */
   resolveOrigin(): string {
-    const manual = getSettings().dshOrigin.trim().replace(/\/+$/, '')
-    if (manual) return manual
-    const live = readOriginFrom(ENDPOINT_FILE)
-    if (live) return live
-    const shell = readOriginFrom(SHELL_FILE)
-    if (shell) return shell
-    const env = (process.env['BUTLER_DSH_ORIGIN'] ?? '').trim().replace(/\/+$/, '')
-    if (env) return env
-    return FALLBACK_ORIGIN
+    this.reloadEndpoint()
+    return this.origin || FALLBACK_ORIGIN
   }
 
   start(handler: Handler): void {
@@ -80,6 +101,7 @@ export class DshBridge {
   stop(): void {
     this.running = false
     this.cursor = -1
+    this.epoch = 0
   }
 
   status(): {
@@ -98,7 +120,7 @@ export class DshBridge {
       running: this.runningTurn,
       phase: this.phase,
       origin: this.origin || this.resolveOrigin(),
-      lastError: this.lastError
+      lastError: this.lastError,
     }
   }
 
@@ -120,13 +142,17 @@ export class DshBridge {
   async newSession(): Promise<void> {
     await this.post('/voice/new', '{}', 20_000)
     this.cursor = -1
+    this.epoch = 0
   }
 
   /* ------------------------------------------------------------ 人格提示词 */
 
   async getPersona(): Promise<{ text: string; isDefault: boolean }> {
     const origin = this.origin || this.resolveOrigin()
-    const res = await fetch(`${origin}/voice/persona`, { signal: AbortSignal.timeout(15_000) })
+    const res = await fetch(`${origin}/voice/persona`, {
+      headers: this.authHeaders(false),
+      signal: AbortSignal.timeout(15_000),
+    })
     if (!res.ok) throw new Error(`读人格失败（HTTP ${res.status}）`)
     const body = (await res.json()) as { text?: string; isDefault?: boolean }
     return { text: String(body.text ?? ''), isDefault: body.isDefault !== false }
@@ -136,9 +162,9 @@ export class DshBridge {
     const origin = this.origin || this.resolveOrigin()
     const res = await fetch(`${origin}/voice/persona`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json; charset=utf-8' },
+      headers: this.authHeaders(true),
       body: JSON.stringify({ text }),
-      signal: AbortSignal.timeout(20_000)
+      signal: AbortSignal.timeout(20_000),
     })
     const body = (await res.json()) as { ok?: boolean; text?: string; isDefault?: boolean; error?: string }
     if (!res.ok || body.ok === false) throw new Error(body.error || `保存人格失败（HTTP ${res.status}）`)
@@ -149,9 +175,9 @@ export class DshBridge {
     const origin = this.origin || this.resolveOrigin()
     const res = await fetch(`${origin}/voice/persona-reset`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json; charset=utf-8' },
+      headers: this.authHeaders(true),
       body: '{}',
-      signal: AbortSignal.timeout(15_000)
+      signal: AbortSignal.timeout(15_000),
     })
     const body = (await res.json()) as { ok?: boolean; text?: string; error?: string }
     if (!res.ok || body.ok === false) throw new Error(body.error || `恢复默认失败（HTTP ${res.status}）`)
@@ -167,13 +193,22 @@ export class DshBridge {
     logInfo('bridge', 'link = ' + next)
   }
 
+  private authHeaders(json: boolean): Record<string, string> {
+    this.reloadEndpoint()
+    const headers: Record<string, string> = {}
+    if (json) headers['content-type'] = 'application/json; charset=utf-8'
+    if (this.token) headers.authorization = `Bearer ${this.token}`
+    return headers
+  }
+
   private async post(route: string, body: string, timeoutMs: number): Promise<void> {
-    const origin = this.origin || this.resolveOrigin()
+    this.reloadEndpoint()
+    const origin = this.origin || FALLBACK_ORIGIN
     const res = await fetch(`${origin}${route}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json; charset=utf-8' },
+      headers: this.authHeaders(true),
       body,
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: AbortSignal.timeout(timeoutMs),
     })
     const text = await res.text()
     let parsed: { ok?: boolean; error?: string } = {}
@@ -191,13 +226,21 @@ export class DshBridge {
     while (this.running) {
       try {
         if (!this.origin) this.origin = this.resolveOrigin()
-        const url = `${this.origin}/voice/frames?cursor=${this.cursor}&wait=${POLL_WAIT_MS}`
-        const res = await fetch(url, { signal: AbortSignal.timeout(POLL_TIMEOUT_MS) })
+        const url = `${this.origin}/voice/frames?cursor=${this.cursor}&epoch=${this.epoch}&wait=${POLL_WAIT_MS}`
+        const res = await fetch(url, {
+          headers: this.authHeaders(false),
+          signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+        })
+        if (res.status === 401) {
+          this.reloadEndpoint()
+          throw new Error('unauthorized')
+        }
         if (!res.ok) throw new Error('HTTP ' + res.status)
         const body = (await res.json()) as {
           ok?: boolean
           reset?: boolean
           cursor?: number
+          epoch?: number
           frames?: VoiceFrame[]
           history?: VoiceFrame[]
           sessionId?: string | null
@@ -217,7 +260,10 @@ export class DshBridge {
         if (typeof body.running === 'boolean') this.runningTurn = body.running
         if (typeof body.phase === 'string') this.phase = body.phase
 
-        if (body.reset) {
+        const previousEpoch = this.epoch
+        if (typeof body.epoch === 'number') this.epoch = body.epoch
+        const epochChanged = previousEpoch !== 0 && this.epoch !== previousEpoch
+        if (body.reset || epochChanged) {
           this.handler?.reset()
           const history = Array.isArray(body.history) ? body.history : []
           if (history.length) this.handler?.history(history)
@@ -225,6 +271,7 @@ export class DshBridge {
         for (const frame of body.frames ?? []) this.emit(frame)
 
         if (typeof body.cursor === 'number' && body.cursor >= 0) this.cursor = body.cursor
+        this.retryMs = RETRY_BASE_MS
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (this.link !== 'offline') logError('bridge poll', message)
@@ -232,7 +279,9 @@ export class DshBridge {
         this.setLink('offline')
         // DSH 可能换了端口：每轮都重新找一遍地址
         this.origin = this.resolveOrigin()
-        await sleep(RETRY_MS)
+        const waited = nextBackoff(this.retryMs, Math.random())
+        this.retryMs = waited.nextMs
+        await sleep(waited.waitMs)
       }
     }
   }

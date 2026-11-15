@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { WAKE_WORD, type BallLevel, type SkinKey, type ThemeMode } from '../shared/ipc'
+import { WAKE_WORD, type Accent, type BallLevel, type EffectLevel, type SkinKey, type ThemeMode } from '../shared/ipc'
 
 /**
  * 落盘结构。
@@ -26,6 +26,10 @@ type Stored = {
   skin?: string
   /** 界面主题 */
   theme?: ThemeMode
+  /** 强调色 */
+  accent?: Accent
+  /** 特效强度 */
+  effect?: EffectLevel
   /** 悬浮球层级：最上层 / 普通置顶 / 不置顶 */
   ballLevel?: BallLevel
   /** 手动指定的 DSH 地址；留空则读 endpoint.json */
@@ -41,7 +45,9 @@ const DEFAULTS: Stored = {
   continuous: false,
   skin: 'whale',
   theme: 'system',
-  ballLevel: 'top'
+  accent: 'none',
+  effect: 'vivid',
+  ballLevel: 'top',
 }
 
 /**
@@ -57,6 +63,14 @@ function normalizeSkin(value: unknown): SkinKey {
 
 function normalizeTheme(value: unknown): ThemeMode {
   return value === 'light' || value === 'dark' ? value : 'system'
+}
+
+function normalizeAccent(value: unknown): Accent {
+  return value === 'rose' || value === 'ocean' ? value : 'none'
+}
+
+function normalizeEffect(value: unknown): EffectLevel {
+  return value === 'off' || value === 'soft' ? value : 'vivid'
 }
 
 function normalizeBallLevel(value: unknown): BallLevel {
@@ -92,8 +106,10 @@ function read(): Stored {
       continuous: parsed.continuous === true,
       skin: normalizeSkin(parsed.skin),
       theme: normalizeTheme(parsed.theme),
+      accent: normalizeAccent(parsed.accent),
+      effect: normalizeEffect(parsed.effect),
       ballLevel: normalizeBallLevel(parsed.ballLevel),
-      dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined
+      dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined,
     }
   } catch {
     // 文件损坏时用默认值继续，不阻塞启动
@@ -122,6 +138,8 @@ export type PublicLike = {
   continuous: boolean
   skin: SkinKey
   theme: ThemeMode
+  accent: Accent
+  effect: EffectLevel
   ballLevel: BallLevel
   dshOrigin: string
 }
@@ -139,8 +157,10 @@ export function getSettings(): PublicLike {
     continuous: s.continuous === true,
     skin: normalizeSkin(s.skin),
     theme: normalizeTheme(s.theme),
+    accent: normalizeAccent(s.accent),
+    effect: normalizeEffect(s.effect),
     ballLevel: normalizeBallLevel(s.ballLevel),
-    dshOrigin: s.dshOrigin ?? ''
+    dshOrigin: s.dshOrigin ?? '',
   }
 }
 
@@ -184,6 +204,8 @@ export function savePreferences(patch: {
   continuous?: boolean
   skin?: SkinKey
   theme?: ThemeMode
+  accent?: Accent
+  effect?: EffectLevel
   ballLevel?: BallLevel
   dshOrigin?: string
 }): void {
@@ -198,8 +220,10 @@ export function savePreferences(patch: {
     continuous: patch.continuous ?? s.continuous === true,
     skin: normalizeSkin(patch.skin ?? s.skin),
     theme: normalizeTheme(patch.theme ?? s.theme),
+    accent: normalizeAccent(patch.accent ?? s.accent),
+    effect: normalizeEffect(patch.effect ?? s.effect),
     ballLevel: normalizeBallLevel(patch.ballLevel ?? s.ballLevel),
-    dshOrigin: patch.dshOrigin ?? s.dshOrigin
+    dshOrigin: patch.dshOrigin ?? s.dshOrigin,
   })
 }
 

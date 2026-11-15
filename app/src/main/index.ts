@@ -1,7 +1,10 @@
-import { app, globalShortcut, Menu, nativeImage, nativeTheme, session, Tray } from 'electron'
+import { app, globalShortcut, Menu, nativeImage, nativeTheme, net, protocol, session, Tray } from 'electron'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { resolveCustomSkinFile } from './customSkins'
 import { getBridge } from './bridge'
+import { contentSecurityPolicy, isLocalContents } from './harden'
 import { registerIpc } from './ipc'
 import { installCrashLogging, logError, logInfo } from './log'
 import { runWakeWordSelfTest } from './audio/selftest'
@@ -22,7 +25,7 @@ import {
   markQuitting,
   showPanel,
   showPeekWith,
-  togglePanel
+  togglePanel,
 } from './windows'
 
 /**
@@ -48,6 +51,19 @@ function readOverlayModeHint(): string {
     return ''
   }
 }
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'butler-skin',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
+  },
+])
 
 installCrashLogging()
 // 透明窗口在部分 Windows 驱动上会因遮挡判定而停画
@@ -90,7 +106,7 @@ function buildTray(): void {
       label: '叫醒她（等价于喊唤醒词）',
       click: () => {
         getVoice().wakeByHand()
-      }
+      },
     },
     {
       label: '在 DSH 里开一条新会话',
@@ -98,7 +114,7 @@ function buildTray(): void {
         void getBridge()
           .newSession()
           .catch((error) => logError('tray.newSession', error))
-      }
+      },
     },
     { type: 'separator' },
     {
@@ -110,8 +126,8 @@ function buildTray(): void {
         click: () => {
           savePreferences({ skin: skin.key })
           broadcastSkin(skin.key)
-        }
-      }))
+        },
+      })),
     },
     {
       label: '悬浮球层级',
@@ -122,8 +138,8 @@ function buildTray(): void {
         click: () => {
           savePreferences({ ballLevel: item.value })
           applyBallLevel(item.value)
-        }
-      }))
+        },
+      })),
     },
     {
       label: '开机启动',
@@ -133,10 +149,10 @@ function buildTray(): void {
         app.setLoginItemSettings({
           openAtLogin: item.checked,
           path: process.execPath,
-          args: app.isPackaged ? [] : [app.getAppPath()]
+          args: app.isPackaged ? [] : [app.getAppPath()],
         })
         logInfo('autostart', String(item.checked))
-      }
+      },
     },
     {
       label: '开关悬浮球',
@@ -145,7 +161,7 @@ function buildTray(): void {
         if (!ball) return
         if (ball.isVisible()) ball.hide()
         else ball.showInactive()
-      }
+      },
     },
     { type: 'separator' },
     {
@@ -153,8 +169,8 @@ function buildTray(): void {
       click: () => {
         markQuitting()
         app.quit()
-      }
-    }
+      },
+    },
   ])
   tray.setContextMenu(menu)
   tray.on('click', () => togglePanel())
@@ -184,19 +200,38 @@ function wireBridge(): void {
       toPanel(IPC.linkState, { link, origin })
       voice.handleLink(link)
       if (tray) tray.setToolTip(link === 'online' ? '管家 · 已连上 DSH' : '管家 · 未连上 DSH')
-    }
+    },
+  })
+}
+
+function registerSkinProtocol(): void {
+  protocol.handle('butler-skin', (request) => {
+    const file = resolveCustomSkinFile(request.url)
+    if (!file) return new Response('missing', { status: 404 })
+    return net.fetch(pathToFileURL(file).href)
   })
 }
 
 async function bootstrap(): Promise<void> {
   await app.whenReady()
+  registerSkinProtocol()
   logInfo('ready')
 
-  // 麦克风权限：本机桌面应用，直接放行采集（不弹 Chromium 的授权条）
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'media' || permission === ('audioCapture' as typeof permission))
+  // 只有本应用页面能要麦克风；别的权限一律不给
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => {
+    callback(permission === 'media' && isLocalContents(wc))
   })
-  session.defaultSession.setPermissionCheckHandler(() => true)
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => {
+    return permission === 'media' && isLocalContents(wc ?? null)
+  })
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = {
+      ...details.responseHeaders,
+      'Content-Security-Policy': [contentSecurityPolicy()],
+    }
+    callback({ responseHeaders })
+  })
 
   const settings = getSettings()
   logInfo('settings', JSON.stringify({ ...settings, hasKey: settings.hasKey }))
@@ -228,8 +263,10 @@ async function bootstrap(): Promise<void> {
   globalShortcut.register('Control+Alt+J', () => getVoice().wakeByHand())
   logInfo(
     'shortcut',
-    'Ctrl+Alt+H=' + String(globalShortcut.isRegistered('Control+Alt+H')) +
-      ' Ctrl+Alt+J=' + String(globalShortcut.isRegistered('Control+Alt+J'))
+    'Ctrl+Alt+H=' +
+      String(globalShortcut.isRegistered('Control+Alt+H')) +
+      ' Ctrl+Alt+J=' +
+      String(globalShortcut.isRegistered('Control+Alt+J')),
   )
 
   // 调试用：把面板直接打开

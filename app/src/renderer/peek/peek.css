@@ -1,33 +1,6 @@
 /* 右键小卡片：纸墨双主题，和面板同一套语言，只是小一号 */
 
-:root {
-  --c-paper: #f7f6f2;
-  --c-card: #ffffff;
-  --c-ink: #262420;
-  --c-muted: #6b665d;
-  --c-faint: #767065;
-  --c-line: #2624201a;
-  --c-ok: #1f8a5b;
-  --c-accent: #62584a;
-  --c-danger: #d93a4a;
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
-    'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei UI', 'Microsoft YaHei',
-    'Noto Sans CJK SC', Roboto, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --c-paper: #2a2622;
-    --c-card: #35302b;
-    --c-ink: #d0c7ba;
-    --c-muted: #b4ab9e;
-    --c-faint: #aaa092;
-    --c-line: #a8a09424;
-    --c-ok: #4cc38a;
-    --c-accent: #d0c7ba;
-    --c-danger: #f06474;
-  }
-}
+@import '../shared/tokens.css';
 
 * {
   box-sizing: border-box;
@@ -54,8 +27,8 @@ body {
   gap: 8px;
   background: var(--c-card);
   border: 1px solid var(--c-line);
-  border-radius: 14px;
-  box-shadow: 0 12px 30px #00000033;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-peek);
   cursor: pointer;
   animation: peek-in 160ms ease-out;
   overflow: hidden;

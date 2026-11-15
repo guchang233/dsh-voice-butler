@@ -11,6 +11,10 @@ extraResources:
     to: .
     filter:
       - '**/*'
+      # 原始模型包和 resources/models/kws 重复，大约 36MB，运行时不用
+      - '!models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01/**'
+asarUnpack:
+  - '**/*.node'
 win:
   target:
     - target: nsis

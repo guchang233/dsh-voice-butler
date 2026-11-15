@@ -70,8 +70,9 @@ export async function runWakeWordSelfTest(): Promise<void> {
         text: WAKE_WORD,
         voice_id: 'stella',
         format: 'pcm',
-        filter_markdown: true
-      })
+        filter_markdown: true,
+      }),
+      signal: AbortSignal.timeout(30_000),
     })
     if (!res.ok) {
       logError('selftest', 'TTS 失败 HTTP ' + res.status)
@@ -106,12 +107,14 @@ export async function runWakeWordSelfTest(): Promise<void> {
         const result = bargeWatcher.feed(chunk)
         if (result) bargeHit = result
       }
-      if (hit && (bargeHit || !bargeWatcher)) break
     }
+    // 推理在子进程里：这一段塞完之后还要等回执，命中不会在 feed() 当次返回
+    if (!hit) hit = await watcher.whenCaughtUp(5000)
+    if (bargeWatcher && !bargeHit) bargeHit = await bargeWatcher.whenCaughtUp(5000)
     logInfo(
       'selftest',
       `唤醒词自测：${padded.length} 样本 → 待机引擎 ${hit ? '命中 ' + hit : '未命中'}；` +
-        `播报引擎 ${bargeWatcher ? (bargeHit ? '命中 ' + bargeHit : '未命中') : '（未就绪）'}`
+        `播报引擎 ${bargeWatcher ? (bargeHit ? '命中 ' + bargeHit : '未命中') : '（未就绪）'}`,
     )
 
     // 顺手验证 ASR：把同一段音频送云端识别，看回来是不是「大肥鱼」
@@ -137,7 +140,8 @@ export async function runWakeWordSelfTest(): Promise<void> {
       const asrRes = await fetch(`${settings.baseUrl.replace(/\/+$/, '')}/v1/tools/asr`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}` },
-        body: form
+        body: form,
+        signal: AbortSignal.timeout(45_000),
       })
       if (asrRes.ok) {
         const body = (await asrRes.json()) as { text?: string }

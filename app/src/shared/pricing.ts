@@ -21,8 +21,7 @@ const WEEKEND_OFFPEAK_FROM = Date.parse('2026-08-23T00:00:00+08:00')
 function shanghai(nowMs: number): { dow: number; minutes: number; dayStartMs: number } {
   const shifted = new Date(nowMs + 8 * 3_600_000)
   const minutes = shifted.getUTCHours() * 60 + shifted.getUTCMinutes()
-  const dayStartMs =
-    nowMs - (minutes * 60_000 + shifted.getUTCSeconds() * 1000 + shifted.getUTCMilliseconds())
+  const dayStartMs = nowMs - (minutes * 60_000 + shifted.getUTCSeconds() * 1000 + shifted.getUTCMilliseconds())
   return { dow: shifted.getUTCDay(), minutes, dayStartMs }
 }
 
@@ -31,8 +30,7 @@ export function computePricing(nowMs: number = Date.now()): PeekPricing {
   const weekendRule = nowMs >= WEEKEND_OFFPEAK_FROM
   const isWeekend = weekendRule && (dow === 0 || dow === 6)
   const inPeakWindow =
-    (minutes >= PEAK_START_AM && minutes < PEAK_END_AM) ||
-    (minutes >= PEAK_START_PM && minutes < PEAK_END_PM)
+    (minutes >= PEAK_START_AM && minutes < PEAK_END_AM) || (minutes >= PEAK_START_PM && minutes < PEAK_END_PM)
   const peak = !isWeekend && inPeakWindow
 
   const boundaries = [PEAK_START_AM, PEAK_END_AM, PEAK_START_PM, PEAK_END_PM]
@@ -66,6 +64,6 @@ export function computePricing(nowMs: number = Date.now()): PeekPricing {
     hint: peak ? '全价' : isWeekend ? '周末全天谷价' : '约半价',
     nextLabel: enterPeak ? '进入高峰' : '回到空闲',
     nextAt,
-    remainMs: Math.max(0, nextAt - nowMs)
+    remainMs: Math.max(0, nextAt - nowMs),
   }
 }

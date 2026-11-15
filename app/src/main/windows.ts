@@ -1,6 +1,7 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, MessageChannelMain, screen } from 'electron'
 import { join } from 'node:path'
 import { IPC, type BallLevel } from '../shared/ipc'
+import { hardenWindow } from './harden'
 import { logError, logInfo } from './log'
 import { saveBallPosition } from './store'
 
@@ -25,6 +26,10 @@ function loadPage(win: BrowserWindow, page: 'ball' | 'panel' | 'overlay' | 'peek
     // 只留真正的报错，别把 Electron 每次启动的 CSP 提示写进日志
     if (level >= 3) logError(`console[${page}]`, message)
   })
+  hardenWindow(win)
+  if (page === 'ball' || page === 'panel' || page === 'overlay') {
+    win.webContents.on('did-finish-load', () => scheduleAudioWire())
+  }
   const base = process.env['ELECTRON_RENDERER_URL']
   if (base) {
     void win.loadURL(`${base}/${page}/index.html`)
@@ -61,11 +66,11 @@ export function createBall(saved: { x: number; y: number } | null): BrowserWindo
     backgroundColor: '#00000000',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false
-    }
+      backgroundThrottling: false,
+    },
   })
 
   applyBallLevel(ballLevel)
@@ -73,7 +78,6 @@ export function createBall(saved: { x: number; y: number } | null): BrowserWindo
   // 不做鼠标穿透：Windows 的 SetIgnoreMouseEvents 在「刚改过状态、鼠标还没动」时会丢点击，
   // 表现为「点一下之后就一直穿过去」。窗口缩到正好包住鲸鱼，四角那点空白当作代价。
   ball.setIgnoreMouseEvents(false)
-  startHoverWatch()
 
   ball.once('ready-to-show', () => ball?.showInactive())
   loadPage(ball, 'ball')
@@ -84,32 +88,10 @@ export function getBall(): BrowserWindow | null {
   return ball
 }
 
-/**
- * 悬停动画由渲染层的 pointerenter/pointerleave 直接驱动（窗口一直可交互，事件是可靠的）。
- * 这里只保留 tick 广播，供球窗做电平/状态动画用。
- */
-let hoverTimer: NodeJS.Timeout | null = null
-
-function startHoverWatch(): void {
-  if (hoverTimer) return
-  hoverTimer = setInterval(() => {
-    // 状态动画在渲染层自己跑；主进程不再干预穿透
-  }, 500)
-}
-
 export function broadcastSkin(skin: string): void {
   ball?.webContents.send('skin:changed', skin)
   panel?.webContents.send('skin:changed', skin)
 }
-
-export function stopHoverWatch(): void {
-  if (hoverTimer) {
-    clearInterval(hoverTimer)
-    hoverTimer = null
-  }
-}
-
-
 
 /* --------------------------------------------------------------- 窗口层级 */
 
@@ -195,21 +177,21 @@ function moveFollowers(ballX: number, ballY: number): void {
   const ballBounds = ball?.getBounds()
   const wa = screen.getDisplayNearestPoint({
     x: ballX + Math.round((ballBounds?.width ?? 112) / 2),
-    y: ballY + Math.round((ballBounds?.height ?? 112) / 2)
+    y: ballY + Math.round((ballBounds?.height ?? 112) / 2),
   }).workArea
 
   if (dragPanelOffset && panel && !panel.isDestroyed() && panel.isVisible()) {
     panel.setPosition(
       Math.round(clamp(ballX + dragPanelOffset.x, wa.x + 4, wa.x + wa.width - PANEL_W - 4)),
       Math.round(clamp(ballY + dragPanelOffset.y, wa.y + 4, wa.y + wa.height - PANEL_H - 4)),
-      false
+      false,
     )
   }
   if (dragPeekOffset && peek && !peek.isDestroyed() && peek.isVisible()) {
     peek.setPosition(
       Math.round(clamp(ballX + dragPeekOffset.x, wa.x + 4, wa.x + wa.width - PEEK_W - 4)),
       Math.round(clamp(ballY + dragPeekOffset.y, wa.y + 4, wa.y + wa.height - PEEK_H - 4)),
-      false
+      false,
     )
   }
 }
@@ -255,7 +237,7 @@ function snapToNearestEdge(): void {
   const bounds = ball.getBounds()
   const display = screen.getDisplayNearestPoint({
     x: bounds.x + Math.round(bounds.width / 2),
-    y: bounds.y + Math.round(bounds.height / 2)
+    y: bounds.y + Math.round(bounds.height / 2),
   })
   const wa = display.workArea
 
@@ -264,21 +246,21 @@ function snapToNearestEdge(): void {
     {
       x: wa.x + wa.width - bounds.width - SNAP_MARGIN,
       y: bounds.y,
-      d: Math.abs(bounds.x - (wa.x + wa.width - bounds.width - SNAP_MARGIN))
+      d: Math.abs(bounds.x - (wa.x + wa.width - bounds.width - SNAP_MARGIN)),
     },
     { x: bounds.x, y: wa.y + SNAP_MARGIN, d: Math.abs(bounds.y - (wa.y + SNAP_MARGIN)) },
     {
       x: bounds.x,
       y: wa.y + wa.height - bounds.height - SNAP_MARGIN,
-      d: Math.abs(bounds.y - (wa.y + wa.height - bounds.height - SNAP_MARGIN))
-    }
+      d: Math.abs(bounds.y - (wa.y + wa.height - bounds.height - SNAP_MARGIN)),
+    },
   ]
 
   const target = candidates.reduce((a, b) => (b.d < a.d ? b : a))
   const from = { x: bounds.x, y: bounds.y }
   const to = {
     x: clamp(target.x, wa.x, wa.x + wa.width - bounds.width),
-    y: clamp(target.y, wa.y, wa.y + wa.height - bounds.height)
+    y: clamp(target.y, wa.y, wa.y + wa.height - bounds.height),
   }
 
   animatePosition(
@@ -301,7 +283,7 @@ function snapToNearestEdge(): void {
         const { x, y } = peekBounds()
         peek?.setPosition(Math.round(x), Math.round(y), false)
       }
-    }
+    },
   )
 }
 
@@ -321,7 +303,7 @@ function animatePosition(
   to: { x: number; y: number },
   duration: number,
   onStep?: (x: number, y: number) => void,
-  done?: () => void
+  done?: () => void,
 ): void {
   const start = Date.now()
   const timer = setInterval(() => {
@@ -362,11 +344,11 @@ export function createPanel(): BrowserWindow {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false
-    }
+      backgroundThrottling: false,
+    },
   })
 
   applyBallLevel(ballLevel)
@@ -419,11 +401,11 @@ export function createPeek(): BrowserWindow {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false
-    }
+      backgroundThrottling: false,
+    },
   })
   applyBallLevel(ballLevel)
   peek.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -438,7 +420,7 @@ function peekBounds(): { x: number; y: number } {
   const wa = ballBounds
     ? screen.getDisplayNearestPoint({
         x: ballBounds.x + Math.round(ballBounds.width / 2),
-        y: ballBounds.y + Math.round(ballBounds.height / 2)
+        y: ballBounds.y + Math.round(ballBounds.height / 2),
       }).workArea
     : screen.getPrimaryDisplay().workArea
   const gap = 10
@@ -446,7 +428,7 @@ function peekBounds(): { x: number; y: number } {
   if (!ballBounds) {
     return {
       x: clamp(wa.x + wa.width - PEEK_W - 20, wa.x + 8, wa.x + wa.width - PEEK_W - 8),
-      y: wa.y + 80
+      y: wa.y + 80,
     }
   }
 
@@ -504,26 +486,66 @@ export function getOverlay(): BrowserWindow | null {
   return overlayWin
 }
 
+/** 球窗口采频段，用两条 MessagePort 直接推给特效层和面板，不走主进程中转 */
+let audioWireTimer: NodeJS.Timeout | null = null
+
+export function scheduleAudioWire(): void {
+  if (audioWireTimer) clearTimeout(audioWireTimer)
+  audioWireTimer = setTimeout(() => {
+    audioWireTimer = null
+    const toOverlay = new MessageChannelMain()
+    const toPanel = new MessageChannelMain()
+    const post = (win: BrowserWindow | null, ports: Electron.MessagePortMain[]): void => {
+      if (!win || win.isDestroyed()) return
+      try {
+        win.webContents.postMessage('audio-hub', null, ports)
+      } catch (error) {
+        logError('audio-hub', error)
+      }
+    }
+    post(ball, [toOverlay.port1, toPanel.port1])
+    post(overlayWin, [toOverlay.port2])
+    post(panel, [toPanel.port2])
+  }, 40)
+}
+
 /**
  * 屏幕顶部的状态特效层：铺满全屏、永远鼠标穿透、不抢焦点。
  * 只在需要时显示，隐藏时完全不吃性能。
  */
-export function createOverlay(): BrowserWindow {
-  // 铺满整个虚拟桌面（多屏时取所有屏幕的外接矩形），特效才会出现在「屏幕的四条边」
+/** 铺满整个虚拟桌面（多屏时取所有屏幕的外接矩形），特效才会出现在最外侧的四条边 */
+export function overlayBounds(): { x: number; y: number; width: number; height: number } {
   const displays = screen.getAllDisplays()
   const minX = Math.min(...displays.map((d) => d.bounds.x))
   const minY = Math.min(...displays.map((d) => d.bounds.y))
   const maxX = Math.max(...displays.map((d) => d.bounds.x + d.bounds.width))
   const maxY = Math.max(...displays.map((d) => d.bounds.y + d.bounds.height))
-  const x = minX
-  const y = minY
-  const width = maxX - minX
-  const height = maxY - minY
+  return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) }
+}
+
+export function layoutOverlay(): void {
+  if (!overlayWin || overlayWin.isDestroyed()) return
+  try {
+    overlayWin.setBounds(overlayBounds())
+  } catch (error) {
+    logError('overlay layout', error)
+  }
+}
+
+let displayHooked = false
+
+function hookOverlayDisplays(): void {
+  if (displayHooked) return
+  displayHooked = true
+  screen.on('display-added', () => layoutOverlay())
+  screen.on('display-removed', () => layoutOverlay())
+  screen.on('display-metrics-changed', () => layoutOverlay())
+}
+
+export function createOverlay(): BrowserWindow {
+  const bounds = overlayBounds()
   overlayWin = new BrowserWindow({
-    x,
-    y,
-    width,
-    height,
+    ...bounds,
     frame: false,
     transparent: true,
     resizable: false,
@@ -539,12 +561,14 @@ export function createOverlay(): BrowserWindow {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false
-    }
+      // 特效关着的时候允许节流；亮起来时由 overlay.ts 再关掉
+      backgroundThrottling: true,
+    },
   })
+  hookOverlayDisplays()
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   // 永远穿透：这层只是画特效，绝不能抢鼠标
@@ -561,7 +585,11 @@ export function getPanel(): BrowserWindow | null {
   return panel
 }
 
-function overlapsPanel(a: { x: number; y: number; width: number; height: number }, b: Electron.Rectangle, margin: number): boolean {
+function overlapsPanel(
+  a: { x: number; y: number; width: number; height: number },
+  b: Electron.Rectangle,
+  margin: number,
+): boolean {
   return !(
     a.x + a.width + margin <= b.x ||
     b.x + b.width + margin <= a.x ||
@@ -578,7 +606,7 @@ function anchorBounds(): { x: number; y: number } {
   }
   const display = screen.getDisplayNearestPoint({
     x: ballBounds.x + Math.round(ballBounds.width / 2),
-    y: ballBounds.y + Math.round(ballBounds.height / 2)
+    y: ballBounds.y + Math.round(ballBounds.height / 2),
   })
   const wa = display.workArea
   const gap = 12
@@ -591,8 +619,7 @@ function anchorBounds(): { x: number; y: number } {
   const maxY = wa.y + wa.height - PANEL_H - 8
   const fits = (xx: number, yy: number): boolean =>
     !overlapsPanel({ x: xx, y: yy, width: PANEL_W, height: PANEL_H }, ballBounds, gap)
-  const sideY = (top: boolean): number =>
-    top ? ballBounds.y - PANEL_H - gap : ballBounds.y + ballBounds.height + gap
+  const sideY = (top: boolean): number => (top ? ballBounds.y - PANEL_H - gap : ballBounds.y + ballBounds.height + gap)
 
   const preferTop = ballBounds.y + ballBounds.height / 2 > wa.y + wa.height / 2
 
@@ -655,8 +682,3 @@ export function togglePanel(): void {
   if (visible) hidePanel()
   else showPanel()
 }
-
-
-
-
-

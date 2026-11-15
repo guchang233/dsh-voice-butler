@@ -1,41 +1,6 @@
-/* 设计语言取自 gcys（ZeraFun）站点：纸墨双主题、衬线标题、胶囊搜索条、底部标签栏 */
+/* 设计语言取自 gcys（ZeraFun）站点：纸墨双主题、衬线标题、胶囊搜索条。颜色和曲线在 tokens.css。 */
 
-:root {
-  --c-paper: #f7f6f2;
-  --c-card: #ffffff;
-  --c-raised: #ebe8e1;
-  --c-ink: #262420;
-  --c-muted: #6b665d;
-  --c-faint: #767065;
-  --c-soft: #2624200b;
-  --c-line: #2624201a;
-  --c-accent: #62584a;
-  --c-danger: #d93a4a;
-  --c-ok: #1f8a5b;
-  --c-header: #f7f6f2f2;
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
-    'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei UI', 'Microsoft YaHei',
-    'Noto Sans CJK SC', Roboto, sans-serif;
-  --font-reading: 'Noto Serif CJK SC', 'Source Han Serif SC', 'Songti SC', STSong, SimSun,
-    serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --c-paper: #2a2622;
-    --c-card: #35302b;
-    --c-raised: #403931;
-    --c-ink: #d0c7ba;
-    --c-muted: #b4ab9e;
-    --c-faint: #aaa092;
-    --c-soft: #a8a09414;
-    --c-line: #a8a09424;
-    --c-accent: #d0c7ba;
-    --c-danger: #f06474;
-    --c-ok: #4cc38a;
-    --c-header: #2a2622f2;
-  }
-}
+@import '../shared/tokens.css';
 
 * {
   box-sizing: border-box;
@@ -102,10 +67,10 @@ button:disabled {
   height: 100%;
   overflow: hidden;
   border: 1px solid var(--c-line);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--c-paper);
-  box-shadow: 0 18px 48px #0000003d;
-  animation: rise 0.26s cubic-bezier(0.22, 1.2, 0.36, 1);
+  box-shadow: var(--shadow-card);
+  animation: rise 0.26s var(--ease-rise);
   transform-origin: 50% 100%;
 }
 
@@ -178,7 +143,9 @@ button:disabled {
   border-radius: 10px;
   background: transparent;
   color: var(--c-muted);
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .icon-btn:hover {
@@ -236,7 +203,10 @@ button:disabled {
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .btn:disabled {
@@ -416,7 +386,9 @@ button:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .chip:hover {
@@ -515,7 +487,9 @@ button:disabled {
   font-size: 14px;
   color: var(--c-ink);
   background: transparent;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .search-submit:hover:not(:disabled) {
@@ -727,7 +701,7 @@ button:disabled {
   border-radius: 12px;
   background: var(--c-card);
   box-shadow: 0 6px 20px #0000001f;
-  animation: sheetIn 0.2s cubic-bezier(0.22, 1.2, 0.36, 1);
+  animation: sheetIn 0.2s var(--ease-rise);
 }
 
 @keyframes sheetIn {
@@ -784,7 +758,9 @@ button:disabled {
   color: var(--c-muted);
   font-size: 12.5px;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .seg-item:hover {
@@ -794,7 +770,7 @@ button:disabled {
 .seg-item.is-on {
   background: var(--c-card);
   color: var(--c-ink);
-  box-shadow: 0 1px 3px #0000001f;
+  box-shadow: var(--shadow-seg);
 }
 
 .switch-row {
@@ -817,32 +793,6 @@ button:disabled {
   flex: none;
 }
 
-/* ------------------------------------------------------------ 换肤 */
-:root[data-skin='paper'] {
-  --c-paper: #f7f6f2; --c-card: #ffffff; --c-raised: #ebe8e1;
-  --c-ink: #262420; --c-muted: #6b665d; --c-faint: #767065;
-  --c-soft: #2624200b; --c-line: #2624201a; --c-accent: #62584a;
-  --c-header: #f7f6f2f2;
-}
-:root[data-skin='ink'] {
-  --c-paper: #2a2622; --c-card: #35302b; --c-raised: #403931;
-  --c-ink: #d0c7ba; --c-muted: #b4ab9e; --c-faint: #aaa092;
-  --c-soft: #a8a09414; --c-line: #a8a09424; --c-accent: #d0c7ba;
-  --c-header: #2a2622f2;
-}
-:root[data-skin='rose'] {
-  --c-paper: #fbf4f5; --c-card: #fffdfd; --c-raised: #f3e4e7;
-  --c-ink: #2b1f23; --c-muted: #7d646c; --c-faint: #8b737b;
-  --c-soft: #2b1f230c; --c-line: #2b1f231f; --c-accent: #b3566e;
-  --c-header: #fbf4f5f2;
-}
-:root[data-skin='ocean'] {
-  --c-paper: #f1f7f8; --c-card: #ffffff; --c-raised: #e2edef;
-  --c-ink: #1d2a2e; --c-muted: #566f76; --c-faint: #647e85;
-  --c-soft: #1d2a2e0b; --c-line: #1d2a2e1a; --c-accent: #2f6f7a;
-  --c-header: #f1f7f8f2;
-}
-
 /* --------------------------------------------------- 语音壳专用：连接与来源 */
 
 .browse-heading {
@@ -860,7 +810,9 @@ button:disabled {
   background: var(--c-danger);
   opacity: 0.75;
   vertical-align: middle;
-  transition: background 160ms ease, opacity 160ms ease;
+  transition:
+    background 160ms ease,
+    opacity 160ms ease;
 }
 .link-dot.on {
   background: var(--c-ok);
@@ -968,7 +920,10 @@ button:disabled {
   color: var(--c-muted);
   font-size: 11px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
 }
 
 .skin-cell:hover {
@@ -980,7 +935,7 @@ button:disabled {
   background: var(--c-card);
   color: var(--c-ink);
   border-color: color-mix(in srgb, var(--c-accent) 34%, transparent);
-  box-shadow: 0 1px 3px #0000001f;
+  box-shadow: var(--shadow-seg);
 }
 
 .skin-thumb {
@@ -1137,4 +1092,151 @@ button:disabled {
   margin-left: auto;
   font-size: 11.5px;
   color: var(--c-faint);
+}
+
+/* --------------------------------------------------------- 头部胶囊 + 状态带 */
+
+.header-seg {
+  display: flex;
+  flex: none;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--c-soft);
+}
+
+.header-seg button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--c-muted);
+  font-size: 12px;
+}
+
+.header-seg button.is-on {
+  background: var(--c-card);
+  color: var(--c-ink);
+  box-shadow: var(--shadow-seg);
+}
+
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  flex: none;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--c-line);
+}
+
+.status-wave {
+  width: 72px;
+  height: 24px;
+  flex: none;
+  color: var(--c-muted);
+}
+
+.status-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--c-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ptt {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--c-ink);
+}
+
+.ptt.is-down {
+  background: var(--c-ink);
+  color: var(--c-paper);
+  transform: scale(0.94);
+}
+
+.set-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-card);
+  background: var(--c-card);
+}
+
+.set-card h2 {
+  margin: 0;
+  font-family: var(--font-reading);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.set-card .meta {
+  margin: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.confirm-sheet.is-danger {
+  border: 2px solid var(--c-danger);
+}
+
+.tool-timeline {
+  border: 1px dashed var(--c-line);
+  border-radius: 12px;
+  background: var(--c-soft);
+}
+
+.tool-timeline > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--c-muted);
+  font-size: 12px;
+  text-align: left;
+}
+
+.tool-fold {
+  margin-left: auto;
+  color: var(--c-faint);
+  flex: none;
+}
+
+.tool-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 10px 8px;
+}
+
+.thread-spacer {
+  position: relative;
+  flex: none;
+  width: 100%;
+}
+
+.thread-window {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }

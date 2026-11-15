@@ -1,19 +1,35 @@
 import { app } from 'electron'
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { appendFile, mkdir, rename, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+
+const MAX_BYTES = 2 * 1024 * 1024
 
 const logPath = (): string => join(app.getPath('userData'), 'main.log')
 
+let chain: Promise<void> = Promise.resolve()
+
+async function rotate(file: string): Promise<void> {
+  try {
+    const info = await stat(file)
+    if (info.size < MAX_BYTES) return
+    await rename(file, `${file}.1`)
+  } catch {
+    /* 还没有日志，或者上一份 .1 正在被占用 */
+  }
+}
+
 function write(level: string, parts: unknown[]): void {
   const line = `[${new Date().toISOString()}] ${level} ${parts
-    .map((p) => (p instanceof Error ? `${p.name}: ${p.message}\n${p.stack ?? ''}` : String(p)))
+    .map((part) => (part instanceof Error ? `${part.name}: ${part.message}\n${part.stack ?? ''}` : String(part)))
     .join(' ')}\n`
-  try {
-    mkdirSync(dirname(logPath()), { recursive: true })
-    appendFileSync(logPath(), line, 'utf8')
-  } catch {
-    // 日志写不进去也不能影响主流程
-  }
+  chain = chain
+    .then(async () => {
+      const file = logPath()
+      await mkdir(dirname(file), { recursive: true })
+      await rotate(file)
+      await appendFile(file, line, 'utf8')
+    })
+    .catch(() => undefined)
 }
 
 export const logInfo = (...parts: unknown[]): void => write('INFO', parts)

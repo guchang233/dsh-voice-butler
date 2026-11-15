@@ -1,5 +1,6 @@
-import type { ToolActivity } from '../shared/ipc'
+import type { EffectLevel, ToolActivity } from '../shared/ipc'
 import { logInfo } from './log'
+import { getSettings } from './store'
 import { getOverlay } from './windows'
 
 /**
@@ -83,7 +84,8 @@ function push(): void {
   const win = getOverlay()
   if (!win || win.isDestroyed()) return
 
-  const mode: OverlayMode = demoMode ?? computeMode()
+  const fx: EffectLevel = getSettings().effect
+  const mode: OverlayMode = demoMode ?? (fx === 'off' ? 'off' : computeMode())
   if (mode !== currentMode) {
     currentMode = mode
     modeSince = Date.now()
@@ -95,8 +97,15 @@ function push(): void {
     phase: voicePhase,
     tools: toolCount,
     mouse: mouseCount,
-    since: modeSince
+    since: modeSince,
+    fx,
   })
+
+  try {
+    win.webContents.setBackgroundThrottling(mode === 'off')
+  } catch {
+    /* 窗口正在关 */
+  }
 
   if (hideTimer) {
     clearTimeout(hideTimer)
@@ -136,6 +145,10 @@ function push(): void {
 /* ---------------------------------------------------------------- 调试 */
 
 /** 调试：`BUTLER_OVERLAY_MODE=wake|think|act|mouse` 直接把特效钉在这个模式 */
+export function syncOverlay(): void {
+  push()
+}
+
 export function lockOverlayMode(mode: OverlayMode | null): void {
   demoMode = mode
   push()

@@ -30,10 +30,15 @@ voice.ts  ──POST /voice/say──►  butler-bridge  ──►  DSH 会话�
 
 三个 bundle 都在这个目录里，DSH 侧一次装好：
 
+在仓库根目录执行。桥默认把仓库根目录当作工作区，守护默认去找旁边的 `app/`。要换位置就设 `BUTLER_CWD`、`BUTLER_APP_DIR`。
+
 ```powershell
-dsh plugin --profile desktop add link:D:\AI\ClaudeCode\语音管家\butler-bridge
-dsh plugin --profile desktop add link:D:\AI\ClaudeCode\语音管家\dsh-preset
-dsh plugin --profile desktop add link:D:\AI\ClaudeCode\语音管家\dsh-sync
+cd butler-bridge
+npm install
+cd ..
+dsh plugin --profile desktop add link:$PWD\butler-bridge
+dsh plugin --profile desktop add link:$PWD\dsh-preset
+dsh plugin --profile desktop add link:$PWD\dsh-sync
 ```
 
 装完**完全退出并重开 DSH 桌面端**（注入表与预设都在启动时收集一次）。
@@ -119,7 +124,7 @@ powershell ... acctl.ps1 swing|eco|sleep|light on|off
 | 🟠 橙 | 正在操作这台电脑（跑命令、改文件、查网页） |
 | 🟠 橙 + **四边全亮** | 已经在**动鼠标、敲键盘**操作界面了 |
 
-四边光晕 + 霓虹边框 + 行军虚线 + 四角括号 + 沿边扫光 + 粒子，切换瞬间还有一圈冲击波。
+默认是半分辨率的 WebGL2 流光边框（边缘光晕、极光噪声、状态色平滑过渡，频段会改亮度和厚度）。没有 WebGL2，或者系统开了减弱动效，就退回细光条。设置里可以选关 / 柔和 / 炫酷。切换时是一圈波纹，不再整屏闪白。
 多屏时铺满整个虚拟桌面，所以四条边出现在最外侧。
 明细见 [`docs/唤醒闪烁与顶部特效.md`](docs/唤醒闪烁与顶部特效.md)。
 
@@ -207,9 +212,20 @@ $env:BUTLER_KWS_SELFTEST="1"; cd app; npm run dev
 
 日志：`%APPDATA%\ai-butler\main.log`（壳）、DSH 桌面端的控制台（桥）。
 
+开发时在 `app/` 里：
+
+```powershell
+npm test          # 确认判断、帧游标、断句、端点、计价
+npm run lint
+npm run typecheck
+```
+
+GitHub Actions 在推送时跑同样的 typecheck、测试和 `npm audit`。
+
 ## 已知边界
 
 - 唤醒词写死在 `app/resources/models/kws/keywords.txt`，换词要改文件并重启壳。
-- 识别、合成都是云端，单次识别上限 120 秒；说完停顿约 0.75 秒断句。
-- 语音壳自己不开确认闸门——确认由 DSH 的 approval 服务决定，壳只负责把它显示出来、用嘴问一句。
+- 识别、合成都是云端，单次识别上限 15 秒（再长就按超时收尾）；说完停顿约 0.75 秒断句。
+- 语音壳自己不开确认闸门——确认由 DSH 的 approval 服务决定。危险操作（删除、关机、格式化这类）只能在面板上点允许，语音顶多拒绝。「不行 / 不可以 / 不是 / 不对」是否定。问句念完才开麦。
+- `/voice/say`、`/voice/approve` 这些接口要带 `~/.dsh/butler-bridge/endpoint.json` 里的 Bearer 令牌。`scripts/probe-voice.mjs` 会自己读。
 - 面板上的历史是「这次连上之后」的；更早的记录在 DSH 的会话里翻。

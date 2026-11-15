@@ -7,16 +7,22 @@ import type {
   SettingsPatch,
   VoiceFrame,
   VoiceState,
-  VoiceStatus
+  VoiceStatus,
 } from './ipc'
 
 export type Unsubscribe = () => void
 
+/** 主进程转过来的 MessagePort。两边的 tsconfig 对 MessagePort 不是同一个类型，所以这里只写用到的方法。 */
+export type AudioHubPort = {
+  start: () => void
+  close: () => void
+  postMessage: (message: unknown) => void
+  onmessage: ((event: { data?: { bands?: number[] } }) => void) | null
+}
+
 /** 人格提示词的读取 / 保存结果 */
 export type PersonaRead = { text: string; isDefault: boolean; error?: string }
-export type PersonaWrite =
-  | { ok: true; text: string; isDefault: boolean }
-  | { ok: false; error: string }
+export type PersonaWrite = { ok: true; text: string; isDefault: boolean } | { ok: false; error: string }
 
 /** preload 通过 contextBridge 暴露到 window.api 的完整形状 */
 export type ButlerApi = {
@@ -33,6 +39,11 @@ export type ButlerApi = {
   /** 渲染层把麦克风 PCM 分片喂给主进程（唤醒词 + 端点检测） */
   feedAudio: (chunk: Int16Array) => void
   setMicEnabled: (enabled: boolean) => void
+  /** 按住说话：按下开始听，松开就结束这一句 */
+  ptt: (down: boolean) => void
+  /** 球窗口采到的频段，经 MessagePort 推给面板和特效层 */
+  onAudioHub: (handler: (ports: AudioHubPort[]) => void) => Unsubscribe
+  onSettings: (handler: (settings: PublicSettings) => void) => Unsubscribe
 
   /* 与 DSH 管家会话打交道 */
   say: (text: string) => Promise<Result>

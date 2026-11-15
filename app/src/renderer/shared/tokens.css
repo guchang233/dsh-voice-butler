@@ -1,0 +1,82 @@
+/* 纸 / 墨两套颜色、衬线标题、胶囊、圆角、阴影、Q 弹曲线。取值与原先 panel.css 一致，只是抽出来给面板、悬浮球、右键卡片共用。 */
+
+:root {
+  --c-paper: #f7f6f2;
+  --c-card: #ffffff;
+  --c-raised: #ebe8e1;
+  --c-ink: #262420;
+  --c-muted: #6b665d;
+  --c-faint: #767065;
+  --c-soft: #2624200b;
+  --c-line: #2624201a;
+  --c-accent: #62584a;
+  --c-danger: #d93a4a;
+  --c-ok: #1f8a5b;
+  --c-header: #f7f6f2f2;
+  --font-sans:
+    'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei UI',
+    'Microsoft YaHei', 'Noto Sans CJK SC', Roboto, sans-serif;
+  --font-reading: 'Noto Serif CJK SC', 'Source Han Serif SC', 'Songti SC', STSong, SimSun, serif;
+  --radius-card: 14px;
+  --radius-pill: 999px;
+  --shadow-card: 0 18px 48px #0000003d;
+  --shadow-peek: 0 12px 30px #00000033;
+  --shadow-seg: 0 1px 3px #0000001f;
+  --ease-rise: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --ease-press: cubic-bezier(0.34, 1.46, 0.64, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-paper: #2a2622;
+    --c-card: #35302b;
+    --c-raised: #403931;
+    --c-ink: #d0c7ba;
+    --c-muted: #b4ab9e;
+    --c-faint: #aaa092;
+    --c-soft: #a8a09414;
+    --c-line: #a8a09424;
+    --c-accent: #d0c7ba;
+    --c-danger: #f06474;
+    --c-ok: #4cc38a;
+    --c-header: #2a2622f2;
+  }
+}
+
+/* 原来写在 data-skin 上，和贴图键撞车，所以从来没生效。改挂到主题的强调色上，数值不动。 */
+:root[data-accent='rose'] {
+  --c-paper: #fbf4f5;
+  --c-card: #fffdfd;
+  --c-raised: #f3e4e7;
+  --c-ink: #2b1f23;
+  --c-muted: #7d646c;
+  --c-faint: #8b737b;
+  --c-soft: #2b1f230c;
+  --c-line: #2b1f231f;
+  --c-accent: #b3566e;
+  --c-header: #fbf4f5f2;
+}
+
+:root[data-accent='ocean'] {
+  --c-paper: #f1f7f8;
+  --c-card: #ffffff;
+  --c-raised: #e2edef;
+  --c-ink: #1d2a2e;
+  --c-muted: #566f76;
+  --c-faint: #647e85;
+  --c-soft: #1d2a2e0b;
+  --c-line: #1d2a2e1a;
+  --c-accent: #2f6f7a;
+  --c-header: #f1f7f8f2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

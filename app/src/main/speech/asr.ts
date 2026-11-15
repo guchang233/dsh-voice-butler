@@ -8,7 +8,8 @@ export async function transcribe(baseUrl: string, apiKey: string, wav: Buffer): 
   const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/tools/asr`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
-    body: form
+    body: form,
+    signal: AbortSignal.timeout(45_000),
   })
 
   if (!res.ok) {
@@ -35,7 +36,7 @@ async function describe(res: Response): Promise<string> {
     401: 'API Key 无效（401）',
     402: '账户余额不足（402）',
     413: '音频太大（413）',
-    429: '请求过于频繁（429）'
+    429: '请求过于频繁（429）',
   }
   const head = map[res.status] ?? `语音识别失败（HTTP ${res.status}）`
   return detail ? `${head}：${detail}` : head

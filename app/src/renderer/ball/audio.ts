@@ -1,10 +1,11 @@
+import workletUrl from './mic-processor.js?url'
+
 /** 球窗口里的音频：麦克风采集（16 kHz PCM 分片上行）+ TTS PCM 排程播放 + 唤醒提示音 */
 
-const TARGET_RATE = 16000
 const PLAY_RATE = 24000
 
 let micCtx: AudioContext | null = null
-let micNode: ScriptProcessorNode | null = null
+let micNode: AudioWorkletNode | null = null
 let micStream: MediaStream | null = null
 let micGain: GainNode | null = null
 /** 上一次真正收到麦克风回调的时刻：太久没有 = 采集管线死了，得重开 */
@@ -13,9 +14,65 @@ let micRestartTimer: ReturnType<typeof setTimeout> | null = null
 let micRestartCount = 0
 let micWatchdog: ReturnType<typeof setInterval> | null = null
 let micChunkSink: ((chunk: Int16Array) => void) | null = null
+let micAnalyser: AnalyserNode | null = null
+let playAnalyser: AnalyserNode | null = null
+const bandListeners = new Set<(bands: number[]) => void>()
+let bandPorts: MessagePort[] = []
+let bandTimer: ReturnType<typeof setInterval> | null = null
+
+/** 悬浮球自己画频谱用。面板和特效层走 MessagePort。 */
+export function subscribeBands(listener: (bands: number[]) => void): () => void {
+  bandListeners.add(listener)
+  return () => bandListeners.delete(listener)
+}
+
+export function setBandPorts(ports: MessagePort[]): void {
+  for (const port of bandPorts) {
+    try {
+      port.close()
+    } catch {
+      /* 已经关了 */
+    }
+  }
+  bandPorts = ports
+  for (const port of ports) port.start()
+  ensureBandTimer()
+}
+
+function readBands(analyser: AnalyserNode | null, into: number[]): void {
+  if (!analyser) return
+  const bins = new Uint8Array(analyser.frequencyBinCount)
+  analyser.getByteFrequencyData(bins)
+  const groups = into.length
+  const size = Math.max(1, Math.floor(bins.length / groups))
+  for (let i = 0; i < groups; i++) {
+    let sum = 0
+    for (let j = 0; j < size; j++) sum += bins[i * size + j] ?? 0
+    into[i] = Math.max(into[i], sum / size / 255)
+  }
+}
+
+function publishBands(): void {
+  const bands = [0, 0, 0, 0, 0, 0, 0, 0]
+  readBands(micAnalyser, bands)
+  readBands(playAnalyser, bands)
+  for (const listener of bandListeners) listener(bands)
+  const payload = { bands }
+  for (const port of bandPorts) {
+    try {
+      port.postMessage(payload)
+    } catch {
+      /* 对端关了 */
+    }
+  }
+}
+
+function ensureBandTimer(): void {
+  if (bandTimer) return
+  bandTimer = setInterval(publishBands, 34)
+}
 
 let playCtx: AudioContext | null = null
-let playCtxDefaultRate = false
 let nextTime = 0
 /** 网络分片可能把一个 16-bit 采样切成两半，留到下一片再拼 */
 let pcmRest = new Uint8Array(0)
@@ -66,12 +123,10 @@ function ensurePlayCtx(): AudioContext {
   if (!playCtx) {
     try {
       playCtx = new AudioContext({ sampleRate: PLAY_RATE })
-      playCtxDefaultRate = false
     } catch (error) {
       // 有些声卡不认 24k，退回设备默认采样率（音源仍是 24k，浏览器会重采样）
       console.error('[ball-audio] 24k 上下文建不出来，退回默认采样率：', String(error))
       playCtx = new AudioContext()
-      playCtxDefaultRate = true
     }
     playCtx.onstatechange = () => {
       if (!playCtx) return
@@ -112,9 +167,16 @@ export function pushPcm(buffer: ArrayBuffer): void {
   try {
     const audioBuffer = ctx.createBuffer(1, samples.length, PLAY_RATE)
     audioBuffer.copyToChannel(samples, 0)
+    if (!playAnalyser || playAnalyser.context !== ctx) {
+      playAnalyser = ctx.createAnalyser()
+      playAnalyser.fftSize = 256
+      playAnalyser.smoothingTimeConstant = 0.75
+      playAnalyser.connect(ctx.destination)
+      ensureBandTimer()
+    }
     const source = ctx.createBufferSource()
     source.buffer = audioBuffer
-    source.connect(ctx.destination)
+    source.connect(playAnalyser)
 
     const start = Math.max(ctx.currentTime + 0.02, nextTime)
     source.start(start)
@@ -151,6 +213,7 @@ export function stopPlayback(): void {
   }
   void playCtx.close()
   playCtx = null
+  playAnalyser = null
   nextTime = 0
   idleListener?.()
 }
@@ -179,31 +242,6 @@ export function chime(kind: 'wake' | 'error' = 'wake'): void {
 
 /* ------------------------------------------------------------------ 采集 */
 
-function downsample(input: Float32Array, from: number, to: number): Float32Array {
-  if (from === to) return input
-  const ratio = from / to
-  const length = Math.floor(input.length / ratio)
-  const out = new Float32Array(length)
-  for (let i = 0; i < length; i++) {
-    const pos = i * ratio
-    const base = Math.floor(pos)
-    const frac = pos - base
-    const a = input[base] ?? 0
-    const b = input[base + 1] ?? a
-    out[i] = a + (b - a) * frac
-  }
-  return out
-}
-
-function toInt16(samples: Float32Array): Int16Array {
-  const out = new Int16Array(samples.length)
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]))
-    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff
-  }
-  return out
-}
-
 export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<boolean> {
   micChunkSink = onChunk
   if (micNode) return true
@@ -213,37 +251,29 @@ export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<bo
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: true
-      }
+        autoGainControl: true,
+      },
     })
     micCtx = new AudioContext()
-    const rate = micCtx.sampleRate
+    await micCtx.audioWorklet.addModule(workletUrl)
     const source = micCtx.createMediaStreamSource(micStream)
-    micNode = micCtx.createScriptProcessor(2048, 1, 1)
+    micAnalyser = micCtx.createAnalyser()
+    micAnalyser.fftSize = 256
+    micAnalyser.smoothingTimeConstant = 0.75
+    micNode = new AudioWorkletNode(micCtx, 'mic-processor')
     micGain = micCtx.createGain()
-    micGain.gain.value = 0 // 不把麦克风回放到扬声器，接个静音节点只为让 ScriptProcessor 持续回调
-
-    let pending: Float32Array = new Float32Array(0)
-    micNode.onaudioprocess = (event) => {
+    micGain.gain.value = 0
+    micNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       micLastAt = Date.now()
-      const input = event.inputBuffer.getChannelData(0)
-      const resampled = downsample(input, rate, TARGET_RATE)
-      const merged = new Float32Array(pending.length + resampled.length)
-      merged.set(pending)
-      merged.set(resampled, pending.length)
-
-      const usable = Math.floor(merged.length / 1600) * 1600
-      if (usable === 0) {
-        pending = merged
-        return
-      }
-      pending = merged.slice(usable)
-      micChunkSink?.(toInt16(merged.subarray(0, usable)))
+      const pcm = new Int16Array(event.data)
+      if (pcm.length) micChunkSink?.(pcm)
     }
 
-    source.connect(micNode)
+    source.connect(micAnalyser)
+    micAnalyser.connect(micNode)
     micNode.connect(micGain)
     micGain.connect(micCtx.destination)
+    ensureBandTimer()
     micLastAt = Date.now()
     micRestartCount = 0
 
@@ -279,7 +309,8 @@ export function restartMic(): void {
   requestMicRestart('录音设备变化')
 }
 
-function startMicWatchdog(): void {  if (micWatchdog) return
+function startMicWatchdog(): void {
+  if (micWatchdog) return
   micWatchdog = setInterval(() => {
     // 回调停了 4 秒 = 采集管线死了（静音也会回调，所以「没回调」才是真死了）
     if (micLastAt && Date.now() - micLastAt > 4000) {
@@ -291,10 +322,12 @@ function startMicWatchdog(): void {  if (micWatchdog) return
 
 export function stopMic(): void {
   micNode?.disconnect()
+  micAnalyser?.disconnect()
   micGain?.disconnect()
   micStream?.getTracks().forEach((track) => track.stop())
   void micCtx?.close()
   micNode = null
+  micAnalyser = null
   micGain = null
   micStream = null
   micCtx = null

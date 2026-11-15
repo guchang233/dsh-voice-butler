@@ -27,10 +27,14 @@ export default function Peek(): JSX.Element {
   const [data, setData] = useState<PeekData | null>(null)
   const [now, setNow] = useState(Date.now())
 
-  useEffect(() => window.api.onPeekData((next) => {
-    setData(next)
-    setNow(Date.now())
-  }), [])
+  useEffect(
+    () =>
+      window.api.onPeekData((next) => {
+        setData(next)
+        setNow(Date.now())
+      }),
+    [],
+  )
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)

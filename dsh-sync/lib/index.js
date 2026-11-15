@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { execSync, spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 /**
  * dsh-butler-shell —— 语音壳的守护者。
@@ -10,27 +11,67 @@ import { execSync, spawn } from 'node:child_process'
  *   2. 把壳需要知道的东西写进 ~/.dsh/butler-bridge/shell.json（DSH 地址等）。
  *
  * 它不碰对话：识别、回话、工具全在 butler-bridge 和管家会话里。
+ *
+ * 应用目录默认是本插件上一级的 app/。要换位置就设 BUTLER_APP_DIR。
  */
 
 export const name = 'dsh-butler-sync'
 export const inject = ['webServer']
 
-const APP_DIR = process.env.BUTLER_APP_DIR || 'D:\\AI\\ClaudeCode\\语音管家\\app'
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const APP_DIR = process.env.BUTLER_APP_DIR || path.resolve(HERE, '../../app')
 const APP_EXE = path.join(APP_DIR, 'dist', 'win-unpacked', '管家.exe')
 const DEV_EXE = path.join(APP_DIR, 'node_modules', 'electron', 'dist', 'electron.exe')
 const STATE_DIR = path.join(process.env.USERPROFILE || process.env.HOME || '.', '.dsh', 'butler-bridge')
 const SHELL_FILE = path.join(STATE_DIR, 'shell.json')
+const PID_FILE = path.join(STATE_DIR, 'shell.pid')
 
-function alreadyRunning() {
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @returns {Promise<string>}
+ */
+function execFileAsync(cmd, args) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { encoding: 'utf8', windowsHide: true, timeout: 8000 }, (error, stdout) => {
+      resolve(error ? '' : String(stdout ?? ''))
+    })
+  })
+}
+
+/** @param {number} pid */
+function pidAlive(pid) {
+  if (!pid) return false
   try {
-    const out = execSync('tasklist /FI "IMAGENAME eq 管家.exe" /NH', { encoding: 'utf8' })
-    return out.includes('管家.exe')
+    process.kill(pid, 0)
+    return true
   } catch {
     return false
   }
 }
 
-/** 壳读这个文件找 DSH；bridge 每 20 秒刷新 endpoint.json，这里补一份壳自己的配置 */
+/**
+ * 打包后的「管家.exe」、上次拉起记下的 pid、或者开发模式里已经在跑这个目录的 electron，都算已经在运行。
+ * 开发模式如果只看 管家.exe，每次 DSH 重载都会再拉起一个 electron。
+ */
+async function alreadyRunning() {
+  try {
+    const pid = Number(fs.readFileSync(PID_FILE, 'utf8').trim())
+    if (pidAlive(pid)) return true
+  } catch {
+    /* 还没有 pid 文件 */
+  }
+  const listed = await execFileAsync('tasklist', ['/FI', 'IMAGENAME eq 管家.exe', '/NH'])
+  if (listed.includes('管家.exe')) return true
+  const lines = await execFileAsync('powershell.exe', [
+    '-NoProfile',
+    '-Command',
+    "Get-CimInstance Win32_Process -Filter \"Name = 'electron.exe'\" | Select-Object -ExpandProperty CommandLine"
+  ])
+  return lines.toLowerCase().includes(APP_DIR.toLowerCase())
+}
+
+/** 壳读这个文件找 DSH；bridge 会刷新 endpoint.json，这里补一份壳自己的配置 */
 function writeShellConfig(origin) {
   try {
     fs.mkdirSync(STATE_DIR, { recursive: true })
@@ -53,10 +94,14 @@ function writeShellConfig(origin) {
   }
 }
 
-function launchShell(logger, origin) {
+/**
+ * @param {{ info?: Function, warn?: Function }} logger
+ * @param {string} origin
+ */
+async function launchShell(logger, origin) {
   try {
-    if (alreadyRunning()) {
-      logger?.info?.('[butler-shell] 语音壳已在运行')
+    if (await alreadyRunning()) {
+      logger?.info?.('[butler-shell] 语音壳已在运行，不再拉起')
       return
     }
     const exe = fs.existsSync(APP_EXE) ? APP_EXE : fs.existsSync(DEV_EXE) ? DEV_EXE : null
@@ -76,6 +121,12 @@ function launchShell(logger, origin) {
       env
     })
     child.unref()
+    try {
+      fs.mkdirSync(STATE_DIR, { recursive: true })
+      if (child.pid) fs.writeFileSync(PID_FILE, String(child.pid), 'utf8')
+    } catch {
+      /* pid 记不住也不影响这次拉起 */
+    }
     logger?.info?.('[butler-shell] 已拉起语音壳：' + exe)
   } catch (error) {
     logger?.warn?.('[butler-shell] 启动语音壳失败：' + (error?.message ?? error))
@@ -93,7 +144,7 @@ export function apply(ctx) {
   }
 
   writeShellConfig(origin)
-  launchShell(logger, origin)
+  void launchShell(logger, origin)
 
   ctx.on('dispose', () => {
     /* 壳自己活着，DSH 退出不杀它：托盘里还能手动关 */
