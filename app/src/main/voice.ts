@@ -23,6 +23,8 @@ import { IPC, type LinkState, type VoiceFrame, type VoiceState } from '../shared
 /** 叫醒后先丢掉这么长的音频：唤醒词检测有几帧延迟，不丢就会把「大肥鱼」录进转写 */
 const WAKE_SKIP_MS = 280
 const MIN_UTTERANCE_MS = 350
+/** 整段里只要有超过这个能量的分片，才算「听到人了」；全静音就不发识别（省额度） */
+const SPEECH_RMS = 0.02
 const MAX_UTTERANCE_MS = 15_000
 /** 连续对话里，静默这么久没人说话就退回去等唤醒词 */
 const CONTINUOUS_IDLE_MS = 15_000
@@ -286,13 +288,21 @@ export class Voice {
 
   private async finishUtterance(reason?: string): Promise<void> {
     const chunks = this.utterance
-    const totalMs = (chunks.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE) * 1000
+    const totalMs = chunks.reduce((n, c) => n + c.length, 0) / SAMPLE_RATE * 1000
+    // 端点检测有没有真的听到人声（reset 之前赶紧读）
+    const heardSpeech =
+      this.endpointer.speechStarted || chunks.some((chunk) => rms(chunk) > SPEECH_RMS)
     this.utterance = []
     this.endpointer.reset()
 
     const capture = this.capture
 
-    if (totalMs < MIN_UTTERANCE_MS) {
+    // 太短、或者整段都是静音：不发识别。连续对话里「15 秒没人说话」也走这条路，
+    // 以前会把一整段沉默丢给 ASR（有请求、没结果），白烧额度。
+    if (totalMs < MIN_UTTERANCE_MS || !heardSpeech) {
+      if (!heardSpeech && totalMs >= MIN_UTTERANCE_MS) {
+        logInfo('voice', `这一轮没听到人声（${Math.round(totalMs)}ms），跳过识别`)
+      }
       if (capture) {
         this.capture = null
         clearTimeout(capture.timer)
