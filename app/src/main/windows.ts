@@ -115,22 +115,74 @@ export function stopHoverWatch(): void {
 
 let dragTimer: NodeJS.Timeout | null = null
 let dragOffset = { x: 0, y: 0 }
-let dragTicks = 0
+/**
+ * 拖动期间面板 / 卡片相对球的位置。抓一次固定偏移，之后只做平移——
+ * 以前每 4 拍重新算一次吸附点，既掉帧又会在球越过屏幕中线时突然翻面。
+ */
+let dragPanelOffset: { x: number; y: number } | null = null
+let dragPeekOffset: { x: number; y: number } | null = null
+
+/** 拖之前先记下「面板 / 卡片现在贴在球的哪一侧」 */
+function captureFollowers(): void {
+  const ballBounds = ball?.getBounds()
+  dragPanelOffset = null
+  dragPeekOffset = null
+  if (!ballBounds) return
+  if (panel && !panel.isDestroyed() && panel.isVisible()) {
+    const b = panel.getBounds()
+    dragPanelOffset = { x: b.x - ballBounds.x, y: b.y - ballBounds.y }
+  }
+  if (peek && !peek.isDestroyed() && peek.isVisible()) {
+    const b = peek.getBounds()
+    dragPeekOffset = { x: b.x - ballBounds.x, y: b.y - ballBounds.y }
+  }
+}
+
+/** 让面板和卡片跟着球一起平移（夹在球所在显示器的工作区里，别跟着飞出屏幕） */
+function moveFollowers(ballX: number, ballY: number): void {
+  const ballBounds = ball?.getBounds()
+  const wa = screen.getDisplayNearestPoint({
+    x: ballX + Math.round((ballBounds?.width ?? 112) / 2),
+    y: ballY + Math.round((ballBounds?.height ?? 112) / 2)
+  }).workArea
+
+  if (dragPanelOffset && panel && !panel.isDestroyed() && panel.isVisible()) {
+    panel.setPosition(
+      Math.round(clamp(ballX + dragPanelOffset.x, wa.x + 4, wa.x + wa.width - PANEL_W - 4)),
+      Math.round(clamp(ballY + dragPanelOffset.y, wa.y + 4, wa.y + wa.height - PANEL_H - 4)),
+      false
+    )
+  }
+  if (dragPeekOffset && peek && !peek.isDestroyed() && peek.isVisible()) {
+    peek.setPosition(
+      Math.round(clamp(ballX + dragPeekOffset.x, wa.x + 4, wa.x + wa.width - PEEK_W - 4)),
+      Math.round(clamp(ballY + dragPeekOffset.y, wa.y + 4, wa.y + wa.height - PEEK_H - 4)),
+      false
+    )
+  }
+}
 
 export function startDrag(): void {
   if (!ball) return
   const bounds = ball.getBounds()
   const cursor = screen.getCursorScreenPoint()
   dragOffset = { x: cursor.x - bounds.x, y: cursor.y - bounds.y }
-  dragTicks = 0
+  captureFollowers()
   stopDragTimer()
+
+  let lastX = bounds.x
+  let lastY = bounds.y
   dragTimer = setInterval(() => {
     if (!ball || ball.isDestroyed()) return
     const point = screen.getCursorScreenPoint()
-    ball.setPosition(Math.round(point.x - dragOffset.x), Math.round(point.y - dragOffset.y), false)
-    // 拖动时面板跟着走（每 4 拍约 32ms 一次，太密会抖）
-    dragTicks += 1
-    if (dragTicks % 4 === 0) syncPanelToBall()
+    const x = Math.round(point.x - dragOffset.x)
+    const y = Math.round(point.y - dragOffset.y)
+    // 位置没变就别白跑一趟（setPosition 在 Windows 上并不便宜）
+    if (x === lastX && y === lastY) return
+    lastX = x
+    lastY = y
+    ball.setPosition(x, y, false)
+    moveFollowers(x, y)
   }, 8)
 }
 
@@ -177,10 +229,28 @@ function snapToNearestEdge(): void {
     y: clamp(target.y, wa.y, wa.y + wa.height - bounds.height)
   }
 
-  animatePosition(from, to, 180, () => {
-    saveBallPosition(to)
-    syncPanelToBall()
-  })
+  animatePosition(
+    from,
+    to,
+    180,
+    (x, y) => moveFollowers(x, y),
+    () => {
+      saveBallPosition(to)
+      dragPanelOffset = null
+      dragPeekOffset = null
+
+      // 落位后只有在「压到球上」时才重新选边；否则保持你拖到的相对位置，别无缘无故跳一下
+      const ballRect = ball?.getBounds()
+      const panelRect = panel && !panel.isDestroyed() && panel.isVisible() ? panel.getBounds() : null
+      if (ballRect && panelRect && overlapsPanel(panelRect, ballRect, 6)) syncPanelToBall()
+
+      const peekRect = peek && !peek.isDestroyed() && peek.isVisible() ? peek.getBounds() : null
+      if (ballRect && peekRect && overlapsPanel(peekRect, ballRect, 6)) {
+        const { x, y } = peekBounds()
+        peek?.setPosition(Math.round(x), Math.round(y), false)
+      }
+    }
+  )
 }
 
 /** 球动过之后让面板跟着让位，否则面板底部会压在球上（点「发送」就变成点球了） */
@@ -198,6 +268,7 @@ function animatePosition(
   from: { x: number; y: number },
   to: { x: number; y: number },
   duration: number,
+  onStep?: (x: number, y: number) => void,
   done?: () => void
 ): void {
   const start = Date.now()
@@ -208,11 +279,10 @@ function animatePosition(
     }
     const t = Math.min(1, (Date.now() - start) / duration)
     const e = 1 - Math.pow(1 - t, 3)
-    ball.setPosition(
-      Math.round(from.x + (to.x - from.x) * e),
-      Math.round(from.y + (to.y - from.y) * e),
-      false
-    )
+    const x = Math.round(from.x + (to.x - from.x) * e)
+    const y = Math.round(from.y + (to.y - from.y) * e)
+    ball.setPosition(x, y, false)
+    onStep?.(x, y)
     if (t >= 1) {
       clearInterval(timer)
       done?.()

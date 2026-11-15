@@ -11,6 +11,7 @@ export default function Orb(): JSX.Element {
   >('idle')
   const [level, setLevel] = useState(0)
   const pressRef = useRef<Press | null>(null)
+  const pressTimer = useRef<number | null>(null)
 
   useEffect(() => {
     const onMove = (event: PointerEvent): void => {
@@ -25,10 +26,11 @@ export default function Orb(): JSX.Element {
       }
     }
 
-    const onUp = (): void => {
+    const onUp = (event: PointerEvent): void => {
       const press = pressRef.current
       pressRef.current = null
-      setPressed(false)
+      // 右键的那一下弹动交给 flashPress 的定时器，松手别把它立刻掐掉
+      if (event.button !== 2) setPressed(false)
       if (!press) return
       if (press.dragging) window.api.dragEnd()
       else void window.api.togglePanel()
@@ -64,6 +66,16 @@ export default function Orb(): JSX.Element {
     setPressed(true)
   }
 
+  /** 右键也弹一下：按下就有 Q 弹反馈，松手（或 260ms 后）复原 */
+  const flashPress = (): void => {
+    setPressed(true)
+    if (pressTimer.current !== null) window.clearTimeout(pressTimer.current)
+    pressTimer.current = window.setTimeout(() => {
+      pressTimer.current = null
+      setPressed(false)
+    }, 260)
+  }
+
   const scale = 1 + Math.min(level, 1) * 0.12
 
   return (
@@ -74,6 +86,7 @@ export default function Orb(): JSX.Element {
       onMouseDown={(event) => {
         if (event.button !== 2) return
         event.preventDefault()
+        flashPress()
         window.api.showPeek()
       }}
       onContextMenu={(event) => {
