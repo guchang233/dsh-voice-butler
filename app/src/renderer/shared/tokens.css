@@ -70,6 +70,45 @@
   --c-header: #f1f7f8f2;
 }
 
+/*
+ * 暗色下的强调色。
+ *
+ * 上面那两块是按「亮色底」写的；不加这一段的话，墨色主题里选了玫瑰/海，
+ * 就会把 --c-paper 顶成亮色 —— 面板整个变白，看着像「配色没生效」。
+ * 这里给暗色各配一套，只在 dark 媒体里覆盖，亮色不受影响。
+ */
+@media (prefers-color-scheme: dark) {
+  :root[data-accent='rose'] {
+    --c-paper: #2a2226;
+    --c-card: #352b30;
+    --c-raised: #403339;
+    --c-ink: #d8c9cf;
+    --c-muted: #b6a1a9;
+    --c-faint: #ab97a0;
+    --c-soft: #d8c9cf14;
+    --c-line: #d8c9cf26;
+    --c-accent: #d97a92;
+    --c-ok: #4cc38a;
+    --c-danger: #f06474;
+    --c-header: #2a2226f2;
+  }
+
+  :root[data-accent='ocean'] {
+    --c-paper: #1f282b;
+    --c-card: #283438;
+    --c-raised: #324045;
+    --c-ink: #c6d5d9;
+    --c-muted: #9db1b7;
+    --c-faint: #93a7ad;
+    --c-soft: #c6d5d914;
+    --c-line: #c6d5d926;
+    --c-accent: #59b4c4;
+    --c-ok: #4cc38a;
+    --c-danger: #f06474;
+    --c-header: #1f282bf2;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

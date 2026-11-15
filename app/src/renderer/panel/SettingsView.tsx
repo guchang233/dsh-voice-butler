@@ -161,8 +161,10 @@ export default function SettingsView({
         </label>
         <label className="switch-row">
           <span>
-            <span className="field-label">说话时允许插话</span>
-            <span className="field-hint">播报中听到你开口就立刻停下听你说。</span>
+            <span className="field-label">说话时允许用唤醒词打断</span>
+            <span className="field-hint">
+              播报中喊「大肥鱼」立刻住嘴转去听你说；不喊就不打断（不会因为声音变大自己停）。
+            </span>
           </span>
           <input type="checkbox" checked={bargeIn} onChange={(event) => setBargeIn(event.target.checked)} />
         </label>

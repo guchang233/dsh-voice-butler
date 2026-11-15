@@ -20,7 +20,8 @@ import { IPC, type LinkState, type VoiceFrame, type VoiceState } from '../shared
  * 它不知道 DSH 里发生了什么、也不判断该不该做——那是管家会话的事。
  */
 
-const PREROLL_MS = 700
+/** 叫醒后先丢掉这么长的音频：唤醒词检测有几帧延迟，不丢就会把「大肥鱼」录进转写 */
+const WAKE_SKIP_MS = 280
 const MIN_UTTERANCE_MS = 350
 const MAX_UTTERANCE_MS = 15_000
 /** 连续对话里，静默这么久没人说话就退回去等唤醒词 */
@@ -50,8 +51,6 @@ export class Voice {
   private bargeWatcher: KeywordWatcher | null = null
   private endpointer = createEndpointer({ maxMs: MAX_UTTERANCE_MS })
   private state: VoiceState = 'idle'
-  private preroll: Int16Array[] = []
-  private prerollMs = 0
   private utterance: Int16Array[] = []
   private micEnabled = true
   private lastLevelSent = 0
@@ -62,7 +61,8 @@ export class Voice {
   private chunker = new SentenceChunker()
   private tts: TtsQueue
   private startedSpeakingAt = 0
-  private bargeIn = 0
+  /** 这段时间内的音频直接丢（叫醒后跳过唤醒词尾巴） */
+  private skipUntil = 0
   private spokenChars = 0
   private link: LinkState = 'connecting'
   private approval: { id: string; tool: string; reason: string } | null = null
@@ -202,6 +202,8 @@ export class Voice {
     }
 
     if (this.state === 'listening') {
+      // 刚被叫醒：这几百毫秒里压着唤醒词的尾巴，直接丢掉，别录进转写
+      if (this.skipUntil && now < this.skipUntil) return
       // 已经在听的时候也认唤醒词：喊一声就当作「重新叫我」——
       // 否则连续对话一直在听，喊唤醒词既没响动也不弹面板，看起来就像坏了。
       const keyword = this.watcher?.feed(chunk) ?? null
@@ -226,47 +228,24 @@ export class Voice {
     }
 
     if (this.state === 'speaking' || this.state === 'thinking') {
-      // 播报中 / 思考中都能一句话打断：用更灵敏的那个引擎，命中就立刻停嘴去听
+      // 播报中 / 思考中：**只有喊唤醒词**才打断（用更灵敏的那个引擎）。
+      // 不再用「声音变大就掐播报」——回声、电视、别人说话都会误伤，主人要的是他亲口叫。
+      if (!getSettings().bargeIn) return
       const keyword = this.bargeWatcher?.feed(chunk) ?? null
       if (keyword) {
         logInfo('voice', 'barge-in: 唤醒词「' + keyword + '」，立刻停下听你说')
-        this.bargeIn = 0
         this.triggerWake(keyword)
-        return
-      }
-
-      if (this.state === 'speaking') {
-        // 能量插话（默认关）：要求更响、更久，避免扬声器回声把播报掐断
-        if (getSettings().bargeIn && now - this.startedSpeakingAt > 800 && rms(chunk) > 0.2) {
-          this.bargeIn += 1
-          if (this.bargeIn >= 8) {
-            logInfo('voice', `barge-in: 用户插话了（level=${rms(chunk).toFixed(3)}，${this.bargeIn} 片），停止播报`)
-            this.bargeIn = 0
-            this.interruptForListen()
-          }
-        } else if (rms(chunk) < 0.05) {
-          this.bargeIn = 0
-        }
       }
       return
     }
 
     if (this.state !== 'idle' && this.state !== 'offline') return
 
-    this.pushPreroll(chunk)
     if (!this.watcher) return
     const keyword = this.watcher.feed(chunk)
     if (keyword) this.triggerWake(keyword)
   }
 
-  private pushPreroll(chunk: Int16Array): void {
-    this.preroll.push(chunk)
-    this.prerollMs += (chunk.length / SAMPLE_RATE) * 1000
-    while (this.prerollMs > PREROLL_MS && this.preroll.length > 1) {
-      const dropped = this.preroll.shift()
-      if (dropped) this.prerollMs -= (dropped.length / SAMPLE_RATE) * 1000
-    }
-  }
 
   private triggerWake(keyword: string): void {
     logInfo('voice', 'wake: ' + keyword)
@@ -276,16 +255,23 @@ export class Voice {
     this.mutePlayback()
     // 刚从待机跳出来，把待机引擎的旧音频倒掉；播报引擎则等回到待机前不再喂
     this.watcher?.reset()
-    this.beginListening()
+    // 唤醒词自己不该被录进去：从「说完大肥鱼」之后才开始收
+    this.beginListening(WAKE_SKIP_MS)
     this.send(IPC.wake, { text: keyword })
     showPanel()
   }
 
-  private beginListening(): void {
+  /**
+   * 开始收音。
+   *
+   * `skipMs`：先丢掉开头这么多毫秒。叫醒时用它是为了不让「大肥鱼」进转写——
+   * 唤醒词检测有几帧延迟，检测到的那一刻音频里还压着关键词的尾巴。
+   * **不再把 preroll 预置进 utterance**：那 700ms 里正好就是唤醒词。
+   */
+  private beginListening(skipMs = 0): void {
     this.endpointer.reset()
-    this.utterance = [...this.preroll]
-    this.preroll = []
-    this.prerollMs = 0
+    this.utterance = []
+    this.skipUntil = skipMs > 0 ? Date.now() + skipMs : 0
     this.bargeWatcher?.reset()
     this.setState('listening')
   }
