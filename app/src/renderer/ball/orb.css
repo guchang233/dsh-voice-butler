@@ -173,14 +173,28 @@ body,
   }
 }
 
-
-
 /* ------------------------------------------------------------ 换肤（球的环与光）：跟面板同一套强调色 */
-:root[data-accent='rose'] .stage.is-listening .orb-ring { border-color: rgba(214, 116, 140, 0.72); }
-:root[data-accent='rose'] .stage.is-thinking .orb-ring { border-color: rgba(214, 116, 140, 0.4); }
-:root[data-accent='rose'] .stage.is-speaking .orb-ring { border-color: rgba(214, 116, 140, 0.5); }
-:root[data-accent='rose'] .stage.is-hover .orb:not(.is-pressed) { filter: drop-shadow(0 8px 18px rgba(179, 86, 110, 0.4)); }
-:root[data-accent='ocean'] .stage.is-listening .orb-ring { border-color: rgba(64, 156, 172, 0.72); }
-:root[data-accent='ocean'] .stage.is-thinking .orb-ring { border-color: rgba(64, 156, 172, 0.4); }
-:root[data-accent='ocean'] .stage.is-speaking .orb-ring { border-color: rgba(64, 156, 172, 0.5); }
-:root[data-accent='ocean'] .stage.is-hover .orb:not(.is-pressed) { filter: drop-shadow(0 8px 18px rgba(47, 111, 122, 0.4)); }
+:root[data-accent='rose'] .stage.is-listening .orb-ring {
+  border-color: rgba(214, 116, 140, 0.72);
+}
+:root[data-accent='rose'] .stage.is-thinking .orb-ring {
+  border-color: rgba(214, 116, 140, 0.4);
+}
+:root[data-accent='rose'] .stage.is-speaking .orb-ring {
+  border-color: rgba(214, 116, 140, 0.5);
+}
+:root[data-accent='rose'] .stage.is-hover .orb:not(.is-pressed) {
+  filter: drop-shadow(0 8px 18px rgba(179, 86, 110, 0.4));
+}
+:root[data-accent='ocean'] .stage.is-listening .orb-ring {
+  border-color: rgba(64, 156, 172, 0.72);
+}
+:root[data-accent='ocean'] .stage.is-thinking .orb-ring {
+  border-color: rgba(64, 156, 172, 0.4);
+}
+:root[data-accent='ocean'] .stage.is-speaking .orb-ring {
+  border-color: rgba(64, 156, 172, 0.5);
+}
+:root[data-accent='ocean'] .stage.is-hover .orb:not(.is-pressed) {
+  filter: drop-shadow(0 8px 18px rgba(47, 111, 122, 0.4));
+}

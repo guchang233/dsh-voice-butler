@@ -152,7 +152,13 @@ export default function App(): JSX.Element {
             <span className="sub">{settings?.wakeWord ?? WAKE_WORD}</span>
           </div>
           <div className="header-seg" role="tablist" aria-label="对话或设置">
-            <button type="button" role="tab" aria-selected={view === 'chat'} className={view === 'chat' ? 'is-on' : ''} onClick={() => setView('chat')}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'chat'}
+              className={view === 'chat' ? 'is-on' : ''}
+              onClick={() => setView('chat')}
+            >
               对话
             </button>
             <button

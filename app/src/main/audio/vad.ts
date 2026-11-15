@@ -81,7 +81,7 @@ export function createEndpointer(options?: {
 
       if (totalMs >= maxMs) return { done: true, reason: 'timeout' }
       return { done: false }
-    }
+    },
   }
 }
 

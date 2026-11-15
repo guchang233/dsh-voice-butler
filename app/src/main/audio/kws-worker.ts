@@ -54,7 +54,7 @@ function openSlot(modelDir: string, score: number, threshold: number): Slot {
     decoder: join(modelDir, 'decoder-epoch-12-avg-2-chunk-16-left-64.onnx'),
     joiner: join(modelDir, 'joiner-epoch-12-avg-2-chunk-16-left-64.onnx'),
     tokens: join(modelDir, 'tokens.txt'),
-    keywords: join(modelDir, 'keywords.txt')
+    keywords: join(modelDir, 'keywords.txt'),
   }
   for (const file of Object.values(files)) {
     if (!existsSync(file)) throw new Error('模型文件缺失: ' + file)
@@ -69,13 +69,13 @@ function openSlot(modelDir: string, score: number, threshold: number): Slot {
       tokens: files.tokens,
       numThreads: 1,
       provider: 'cpu',
-      debug: 0
+      debug: 0,
     },
     keywordsFile: files.keywords,
     keywordsScore: score,
     keywordsThreshold: threshold,
     maxActivePaths: 4,
-    numTrailingBlanks: 2
+    numTrailingBlanks: 2,
   })
   const stream = spotter.createStream()
   warm(spotter, stream, 8000)

@@ -9,5 +9,5 @@ watchAccent()
 createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <Peek />
-  </React.StrictMode>
+  </React.StrictMode>,
 )

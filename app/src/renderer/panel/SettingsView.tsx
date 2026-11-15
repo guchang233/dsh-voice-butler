@@ -7,7 +7,7 @@ import {
   type BallLevel,
   type EffectLevel,
   type PublicSettings,
-  type ThemeMode
+  type ThemeMode,
 } from '../../shared/ipc'
 import SkinGrid from './SkinGrid'
 
@@ -30,7 +30,7 @@ export default function SettingsView({
   preset,
   origin,
   onSaved,
-  onRefresh
+  onRefresh,
 }: Props): JSX.Element {
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(settings?.baseUrl ?? 'https://api.deepseek.com')
@@ -65,7 +65,7 @@ export default function SettingsView({
       bargeIn,
       continuous,
       theme,
-      accent
+      accent,
     })
     if (!result.ok) {
       setState({ kind: 'bad', text: result.error })
@@ -168,10 +168,20 @@ export default function SettingsView({
         </label>
         <label className="field">
           <span className="field-label">语音接口地址</span>
-          <input className="input" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} spellCheck={false} />
+          <input
+            className="input"
+            value={baseUrl}
+            onChange={(event) => setBaseUrl(event.target.value)}
+            spellCheck={false}
+          />
         </label>
         <div className="row-actions">
-          <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={state.kind === 'busy'}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void save()}
+            disabled={state.kind === 'busy'}
+          >
             {state.kind === 'busy' ? <Loader2 size={15} className="spin" /> : <Check size={15} strokeWidth={2} />}
             保存并校验
           </button>
@@ -191,7 +201,7 @@ export default function SettingsView({
               [
                 ['system', '跟随系统'],
                 ['light', '纸（亮）'],
-                ['dark', '墨（暗）']
+                ['dark', '墨（暗）'],
               ] as Array<[ThemeMode, string]>
             ).map(([key, label]) => (
               <button
@@ -215,7 +225,7 @@ export default function SettingsView({
               [
                 ['none', '默认'],
                 ['rose', '玫瑰'],
-                ['ocean', '海']
+                ['ocean', '海'],
               ] as Array<[Accent, string]>
             ).map(([key, label]) => (
               <button
@@ -240,7 +250,7 @@ export default function SettingsView({
               [
                 ['off', '关'],
                 ['soft', '柔和'],
-                ['vivid', '炫酷']
+                ['vivid', '炫酷'],
               ] as Array<[EffectLevel, string]>
             ).map(([key, label]) => (
               <button
@@ -328,13 +338,24 @@ export default function SettingsView({
 
       <section className="set-card">
         <h2>人格</h2>
-        <textarea className="persona-box" value={persona} onChange={(event) => setPersona(event.target.value)} spellCheck={false} rows={10} />
+        <textarea
+          className="persona-box"
+          value={persona}
+          onChange={(event) => setPersona(event.target.value)}
+          spellCheck={false}
+          rows={10}
+        />
         <span className="field-hint">
           {personaIsDefault ? '现在是内置人格。' : '现在是你自己写的人格。'}
           改完下一句就生效。
         </span>
         <div className="row-actions">
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => void savePersona()} disabled={personaState.kind === 'busy'}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => void savePersona()}
+            disabled={personaState.kind === 'busy'}
+          >
             保存人格
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void resetPersona()}>

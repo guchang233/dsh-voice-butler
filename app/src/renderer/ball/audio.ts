@@ -73,7 +73,6 @@ function ensureBandTimer(): void {
 }
 
 let playCtx: AudioContext | null = null
-let playCtxDefaultRate = false
 let nextTime = 0
 /** 网络分片可能把一个 16-bit 采样切成两半，留到下一片再拼 */
 let pcmRest = new Uint8Array(0)
@@ -124,12 +123,10 @@ function ensurePlayCtx(): AudioContext {
   if (!playCtx) {
     try {
       playCtx = new AudioContext({ sampleRate: PLAY_RATE })
-      playCtxDefaultRate = false
     } catch (error) {
       // 有些声卡不认 24k，退回设备默认采样率（音源仍是 24k，浏览器会重采样）
       console.error('[ball-audio] 24k 上下文建不出来，退回默认采样率：', String(error))
       playCtx = new AudioContext()
-      playCtxDefaultRate = true
     }
     playCtx.onstatechange = () => {
       if (!playCtx) return
@@ -254,8 +251,8 @@ export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<bo
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
-        autoGainControl: true
-      }
+        autoGainControl: true,
+      },
     })
     micCtx = new AudioContext()
     await micCtx.audioWorklet.addModule(workletUrl)
@@ -312,7 +309,8 @@ export function restartMic(): void {
   requestMicRestart('录音设备变化')
 }
 
-function startMicWatchdog(): void {  if (micWatchdog) return
+function startMicWatchdog(): void {
+  if (micWatchdog) return
   micWatchdog = setInterval(() => {
     // 回调停了 4 秒 = 采集管线死了（静音也会回调，所以「没回调」才是真死了）
     if (micLastAt && Date.now() - micLastAt > 4000) {

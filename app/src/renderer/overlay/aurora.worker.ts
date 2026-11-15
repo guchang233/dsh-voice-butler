@@ -10,7 +10,7 @@ const COLORS: Record<Exclude<Mode, 'off'>, [number, number, number]> = {
   wake: [58, 245, 166],
   think: [96, 172, 255],
   act: [255, 180, 84],
-  mouse: [255, 138, 24]
+  mouse: [255, 138, 24],
 }
 
 const VERT = `#version 300 es
@@ -93,7 +93,7 @@ function boot(surface: OffscreenCanvas): boolean {
     alpha: true,
     antialias: false,
     premultipliedAlpha: true,
-    powerPreference: 'low-power'
+    powerPreference: 'low-power',
   })
   if (!gl) return false
   const vs = compile(gl.VERTEX_SHADER, VERT)
@@ -141,6 +141,7 @@ function frame(now: number): void {
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
     running = false
+    if (raf) cancelAnimationFrame(raf)
     raf = 0
     return
   }
@@ -154,7 +155,10 @@ function frame(now: number): void {
   gl.uniform3f(loc('uColor'), color[0] / 255, color[1] / 255, color[2] / 255)
   gl.uniform1f(loc('uTime'), now / 1000)
   gl.uniform1f(loc('uPower'), power)
-  gl.uniform1f(loc('uThick'), (fx === 'soft' ? 16 : 26) + audio * (fx === 'vivid' ? 48 : 22) + (mode === 'mouse' ? 12 : 0))
+  gl.uniform1f(
+    loc('uThick'),
+    (fx === 'soft' ? 16 : 26) + audio * (fx === 'vivid' ? 48 : 22) + (mode === 'mouse' ? 12 : 0),
+  )
   gl.uniform1f(loc('uRipple'), ripple)
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
   raf = requestAnimationFrame(frame)

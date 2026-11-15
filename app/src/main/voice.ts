@@ -7,12 +7,7 @@ import { transcribe } from './speech/asr'
 import { SentenceChunker, TtsQueue, TTS_SAMPLE_RATE } from './speech/tts'
 import { getApiKey, getSettings } from './store'
 import { getBall, getPanel, showPanel } from './windows'
-import {
-  approvalPrompt,
-  decideVoiceApproval,
-  isDangerousApproval,
-  tooCloseToPrompt
-} from '../shared/confirm'
+import { approvalPrompt, decideVoiceApproval, isDangerousApproval, tooCloseToPrompt } from '../shared/confirm'
 import { IPC, type LinkState, type VoiceFrame, type VoiceState } from '../shared/ipc'
 
 /**
@@ -106,7 +101,7 @@ export class Voice {
         this.send(IPC.speechChunk, pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength))
         this.scheduleDrainCheck()
       },
-      (error) => logError('tts', error)
+      (error) => logError('tts', error),
     )
   }
 
@@ -188,7 +183,7 @@ export class Voice {
           'voice',
           `mic alive: ${this.micChunks} chunks, rms=${rms(chunk).toFixed(4)}, wake word=${
             this.watcher ? 'ready' : 'missing'
-          }`
+          }`,
         )
       }
     }
@@ -245,10 +240,7 @@ export class Voice {
         if (getSettings().bargeIn && now - this.startedSpeakingAt > 800 && rms(chunk) > 0.2) {
           this.bargeIn += 1
           if (this.bargeIn >= 8) {
-            logInfo(
-              'voice',
-              `barge-in: 用户插话了（level=${rms(chunk).toFixed(3)}，${this.bargeIn} 片），停止播报`
-            )
+            logInfo('voice', `barge-in: 用户插话了（level=${rms(chunk).toFixed(3)}，${this.bargeIn} 片），停止播报`)
             this.bargeIn = 0
             this.interruptForListen()
           }
@@ -501,12 +493,16 @@ export class Voice {
     logInfo('voice', `确认「${answer}」→ ${decision}（dangerous=${dangerous}）`)
     if (decision === 'deny') {
       this.approval = null
-      void getBridge().approve(frame.id, false).catch((error) => logError('approve', error))
+      void getBridge()
+        .approve(frame.id, false)
+        .catch((error) => logError('approve', error))
       return
     }
     if (decision === 'allow') {
       this.approval = null
-      void getBridge().approve(frame.id, true).catch((error) => logError('approve', error))
+      void getBridge()
+        .approve(frame.id, true)
+        .catch((error) => logError('approve', error))
       return
     }
     if (decision === 'needs-click') {

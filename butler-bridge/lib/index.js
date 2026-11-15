@@ -1,8 +1,12 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createFrameLog } from './frames.js'
+import { approveBody, personaBody, sayBody } from './schema.js'
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 /**
  * butler-bridge —— 语音壳（Electron「管家」）与 DSH 管家会话之间的唯一通道。
@@ -26,7 +30,8 @@ export const inject = ['webServer', 'sessionController']
 
 const ROUTE_PREFIX = '/voice'
 
-const TARGET_CWD = process.env.BUTLER_CWD || 'D:\\AI\\ClaudeCode\\语音管家'
+/** 默认用仓库根目录。要用别的工作区就设 BUTLER_CWD。 */
+const TARGET_CWD = process.env.BUTLER_CWD || path.resolve(HERE, '../..')
 const PRESET = process.env.BUTLER_PRESET || 'butler'
 const SESSION_TITLE = process.env.BUTLER_SESSION_TITLE || 'DSH语音管家'
 
@@ -269,6 +274,17 @@ function classifyTool(name, rawArgs) {
 
 /* -------------------------------------------------------------------- 主体 */
 
+/**
+ * 挂上 /voice 路由，并把管家会话的增量推给语音壳。
+ *
+ * @param {object} ctx cordis 上下文
+ * @param {{ info?: Function, warn?: Function, error?: Function }} [ctx.logger]
+ * @param {{ register: Function, getOrigin: Function }} ctx.webServer
+ * @param {{ create: Function, rename: Function, state: Function, prompt: Function, events: Function, cancel: Function }} ctx.sessionController
+ * @param {(name: string, listener: Function) => Function} ctx.on
+ * @param {(fn: Function) => void} ctx.effect
+ * @param {(name: string) => unknown} ctx.get
+ */
 export function apply(ctx) {
   const logger = ctx.logger ?? console
   const state = readJsonFile(STATE_FILE, {})
@@ -704,8 +720,9 @@ export function apply(ctx) {
     if (p === `${ROUTE_PREFIX}/say`) {
       if (method !== 'POST') return sendJson(res, 405, { ok: false, error: 'POST only' })
       const body = await readBody(req)
-      const text = String(body.text ?? '').trim()
-      if (!text) return sendJson(res, 400, { ok: false, error: 'empty text' })
+      const parsed = sayBody.safeParse(body)
+      if (!parsed.success) return sendJson(res, 400, { ok: false, error: '文本不合法' })
+      const text = parsed.data.text
       const id = await ensureSession()
       const requestId = randomUUID()
       await controller.prompt(
@@ -766,7 +783,9 @@ export function apply(ctx) {
     if (p === `${ROUTE_PREFIX}/persona`) {
       if (method === 'POST') {
         const body = await readBody(req, 256 * 1024)
-        const text = String(body.text ?? '').trim()
+        const parsed = personaBody.safeParse(body)
+        if (!parsed.success) return sendJson(res, 400, { ok: false, error: '人格文本不合法' })
+        const text = parsed.data.text.trim()
         if (!text) {
           // 清空 = 恢复默认
           try {
@@ -812,8 +831,10 @@ export function apply(ctx) {
     if (p === `${ROUTE_PREFIX}/approve`) {
       if (method !== 'POST') return sendJson(res, 405, { ok: false, error: 'POST only' })
       const body = await readBody(req)
-      const id = String(body.id ?? '')
-      const allow = body.allow === true
+      const parsed = approveBody.safeParse(body)
+      if (!parsed.success) return sendJson(res, 400, { ok: false, error: '确认参数不合法' })
+      const id = parsed.data.id
+      const allow = parsed.data.allow
       const finish = pendingApprovals.get(id)
       if (!finish) return sendJson(res, 404, { ok: false, error: '这个确认已经过期了' })
       finish(allow ? 'allowed-once' : 'rejected')

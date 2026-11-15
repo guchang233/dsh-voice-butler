@@ -8,7 +8,7 @@ const CSS_COLOR: Record<Exclude<Mode, 'off'>, string> = {
   wake: 'rgb(58, 245, 166)',
   think: 'rgb(96, 172, 255)',
   act: 'rgb(255, 180, 84)',
-  mouse: 'rgb(255, 138, 24)'
+  mouse: 'rgb(255, 138, 24)',
 }
 
 function prefersStill(): boolean {
@@ -82,10 +82,9 @@ export default function Overlay(): JSX.Element {
     }
     try {
       const offscreen = canvas.transferControlToOffscreen()
-      worker.postMessage(
-        { type: 'init', canvas: offscreen, width: window.innerWidth, height: window.innerHeight },
-        [offscreen]
-      )
+      worker.postMessage({ type: 'init', canvas: offscreen, width: window.innerWidth, height: window.innerHeight }, [
+        offscreen,
+      ])
     } catch {
       setCss(true)
       worker.terminate()
@@ -99,11 +98,9 @@ export default function Overlay(): JSX.Element {
       worker.terminate()
       workerRef.current = null
     }
-    // 画布只能转移一次，模式变化走 postMessage，不重建 worker
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [css, fx])
 
-  if (fx === 'off' || mode === 'off' && css) {
+  if (fx === 'off' || (mode === 'off' && css)) {
     return <div className="css-aurora is-off" />
   }
 

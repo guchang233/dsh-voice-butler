@@ -13,11 +13,10 @@
   --c-danger: #d93a4a;
   --c-ok: #1f8a5b;
   --c-header: #f7f6f2f2;
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC',
-    'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei UI', 'Microsoft YaHei',
-    'Noto Sans CJK SC', Roboto, sans-serif;
-  --font-reading: 'Noto Serif CJK SC', 'Source Han Serif SC', 'Songti SC', STSong, SimSun,
-    serif;
+  --font-sans:
+    'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', 'MiSans', 'Microsoft YaHei UI',
+    'Microsoft YaHei', 'Noto Sans CJK SC', Roboto, sans-serif;
+  --font-reading: 'Noto Serif CJK SC', 'Source Han Serif SC', 'Songti SC', STSong, SimSun, serif;
   --radius-card: 14px;
   --radius-pill: 999px;
   --shadow-card: 0 18px 48px #0000003d;

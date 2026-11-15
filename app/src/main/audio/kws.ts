@@ -50,7 +50,7 @@ const MODEL_FILES = [
   'decoder-epoch-12-avg-2-chunk-16-left-64.onnx',
   'joiner-epoch-12-avg-2-chunk-16-left-64.onnx',
   'tokens.txt',
-  'keywords.txt'
+  'keywords.txt',
 ] as const
 
 function modelsReady(dir: string): boolean {
@@ -82,7 +82,7 @@ class RemoteWatcher {
 
   constructor(
     private readonly host: KwsHost,
-    readonly id: string
+    readonly id: string,
   ) {}
 
   markReady(): void {
@@ -223,7 +223,7 @@ function createInlineWatcher(dir: string, options?: KeywordOptions): KeywordWatc
     decoder: join(dir, 'decoder-epoch-12-avg-2-chunk-16-left-64.onnx'),
     joiner: join(dir, 'joiner-epoch-12-avg-2-chunk-16-left-64.onnx'),
     tokens: join(dir, 'tokens.txt'),
-    keywords: join(dir, 'keywords.txt')
+    keywords: join(dir, 'keywords.txt'),
   }
   const score = options?.score ?? 2.0
   const threshold = options?.threshold ?? 0.25
@@ -239,13 +239,13 @@ function createInlineWatcher(dir: string, options?: KeywordOptions): KeywordWatc
         tokens: files.tokens,
         numThreads: 1,
         provider: 'cpu',
-        debug: 0
+        debug: 0,
       },
       keywordsFile: files.keywords,
       keywordsScore: score,
       keywordsThreshold: threshold,
       maxActivePaths: 4,
-      numTrailingBlanks: 2
+      numTrailingBlanks: 2,
     })
     const stream = spotter.createStream()
     stream.acceptWaveform({ sampleRate: 16000, samples: new Float32Array(8000) })
@@ -292,7 +292,7 @@ function createInlineWatcher(dir: string, options?: KeywordOptions): KeywordWatc
         } catch {
           /* 关闭时重置失败无所谓 */
         }
-      }
+      },
     }
   } catch (error) {
     logError(`${label} 初始化失败`, error)

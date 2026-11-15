@@ -9,7 +9,7 @@ import {
   type SettingsPatch,
   type VoiceFrame,
   type VoiceState,
-  type VoiceStatus
+  type VoiceStatus,
 } from '../shared/ipc'
 import type { AudioHubPort, ButlerApi, PersonaRead, PersonaWrite, Unsubscribe } from '../shared/api'
 
@@ -21,8 +21,7 @@ function subscribe<T>(channel: string, handler: (payload: T) => void): Unsubscri
 
 const api: ButlerApi = {
   getSettings: (): Promise<PublicSettings> => ipcRenderer.invoke(IPC.settingsGet),
-  saveSettings: (patch: SettingsPatch): Promise<Result> =>
-    ipcRenderer.invoke(IPC.settingsSave, patch),
+  saveSettings: (patch: SettingsPatch): Promise<Result> => ipcRenderer.invoke(IPC.settingsSave, patch),
   verifyKey: (key: string): Promise<Result> => ipcRenderer.invoke(IPC.settingsVerify, key),
 
   togglePanel: (): Promise<void> => ipcRenderer.invoke(IPC.panelToggle),
@@ -43,8 +42,7 @@ const api: ButlerApi = {
 
   say: (text: string): Promise<Result> => ipcRenderer.invoke(IPC.voiceSay, text),
   stop: (): Promise<Result> => ipcRenderer.invoke(IPC.voiceStop),
-  approve: (id: string, allow: boolean): Promise<Result> =>
-    ipcRenderer.invoke(IPC.voiceApprove, { id, allow }),
+  approve: (id: string, allow: boolean): Promise<Result> => ipcRenderer.invoke(IPC.voiceApprove, { id, allow }),
   newSession: (): Promise<Result> => ipcRenderer.invoke(IPC.voiceNew),
   status: (): Promise<VoiceStatus> => ipcRenderer.invoke(IPC.voiceStatus),
 
@@ -79,8 +77,7 @@ const api: ButlerApi = {
   onPanelShown: (handler) => subscribe<null>(IPC.panelShown, () => handler()),
   onBallHover: (handler) => subscribe<boolean>(IPC.ballHover, handler),
   onVoiceState: (handler) => subscribe<{ state: VoiceState }>(IPC.voiceState, handler),
-  onLinkState: (handler) =>
-    subscribe<{ link: LinkState; origin: string }>(IPC.linkState, handler),
+  onLinkState: (handler) => subscribe<{ link: LinkState; origin: string }>(IPC.linkState, handler),
   onMicLevel: (handler) => subscribe<number>(IPC.micLevel, handler),
   onWake: (handler) => subscribe<{ text?: string }>(IPC.wake, handler),
   onSpeechChunk: (handler) => subscribe<ArrayBuffer>(IPC.speechChunk, handler),
@@ -91,7 +88,7 @@ const api: ButlerApi = {
 
   onFrame: (handler) => subscribe<VoiceFrame>(IPC.voiceFrame, handler),
   onHistory: (handler) => subscribe<VoiceFrame[]>(IPC.voiceHistory, handler),
-  onReset: (handler) => subscribe<null>(IPC.voiceReset, () => handler())
+  onReset: (handler) => subscribe<null>(IPC.voiceReset, () => handler()),
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -21,7 +21,7 @@ import {
   peekVisible,
   showPeekWith,
   startDrag,
-  togglePanel
+  togglePanel,
 } from './windows'
 
 const settingsPatch = z.object({
@@ -35,7 +35,7 @@ const settingsPatch = z.object({
   accent: z.enum(['none', 'rose', 'ocean']).optional(),
   effect: z.enum(['off', 'soft', 'vivid']).optional(),
   continuous: z.boolean().optional(),
-  ballLevel: z.enum(['top', 'float', 'normal']).optional()
+  ballLevel: z.enum(['top', 'float', 'normal']).optional(),
 })
 
 /** 主题一改，三个窗口一起跟着变（CSS 里用的是 prefers-color-scheme） */
@@ -56,13 +56,13 @@ function resolveSkinKey(key: string): string {
 async function verifyKey(baseUrl: string, apiKey: string): Promise<void> {
   const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(15_000)
+    signal: AbortSignal.timeout(15_000),
   })
   if (res.ok) return
   const map: Record<number, string> = {
     401: 'Key 无效（401）',
     402: '账户余额不足（402）',
-    429: '请求过于频繁（429）'
+    429: '请求过于频繁（429）',
   }
   throw new Error(map[res.status] ?? `校验失败（HTTP ${res.status}）`)
 }
@@ -72,7 +72,7 @@ function publishSettings(): void {
   const payload = {
     ...getSettings(),
     sessionId: bridge.sessionId,
-    sessionTitle: 'DSH语音管家'
+    sessionTitle: 'DSH语音管家',
   }
   for (const win of [getBall(), getPanel(), getPeek(), getOverlay()]) {
     if (win && !win.isDestroyed()) win.webContents.send(IPC.settingsChanged, payload)
@@ -85,7 +85,7 @@ export function registerIpc(): void {
     return {
       ...getSettings(),
       sessionId: bridge.sessionId,
-      sessionTitle: 'DSH语音管家'
+      sessionTitle: 'DSH语音管家',
     }
   })
 
@@ -116,7 +116,7 @@ export function registerIpc(): void {
       accent: patch.accent,
       effect: patch.effect,
       continuous: patch.continuous,
-      ballLevel: patch.ballLevel
+      ballLevel: patch.ballLevel,
     })
     if (patch.micEnabled !== undefined) getVoice().setMicEnabled(patch.micEnabled)
     if (patch.theme !== undefined) applyTheme(patch.theme)
@@ -268,7 +268,7 @@ export function registerIpc(): void {
       preset: bridge.preset,
       running: bridge.running,
       origin: bridge.origin,
-      lastError: bridge.lastError
+      lastError: bridge.lastError,
     }
   })
 

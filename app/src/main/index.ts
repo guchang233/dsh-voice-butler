@@ -25,7 +25,7 @@ import {
   markQuitting,
   showPanel,
   showPeekWith,
-  togglePanel
+  togglePanel,
 } from './windows'
 
 /**
@@ -60,9 +60,9 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,
-      stream: true
-    }
-  }
+      stream: true,
+    },
+  },
 ])
 
 installCrashLogging()
@@ -106,7 +106,7 @@ function buildTray(): void {
       label: '叫醒她（等价于喊唤醒词）',
       click: () => {
         getVoice().wakeByHand()
-      }
+      },
     },
     {
       label: '在 DSH 里开一条新会话',
@@ -114,7 +114,7 @@ function buildTray(): void {
         void getBridge()
           .newSession()
           .catch((error) => logError('tray.newSession', error))
-      }
+      },
     },
     { type: 'separator' },
     {
@@ -126,8 +126,8 @@ function buildTray(): void {
         click: () => {
           savePreferences({ skin: skin.key })
           broadcastSkin(skin.key)
-        }
-      }))
+        },
+      })),
     },
     {
       label: '悬浮球层级',
@@ -138,8 +138,8 @@ function buildTray(): void {
         click: () => {
           savePreferences({ ballLevel: item.value })
           applyBallLevel(item.value)
-        }
-      }))
+        },
+      })),
     },
     {
       label: '开机启动',
@@ -149,10 +149,10 @@ function buildTray(): void {
         app.setLoginItemSettings({
           openAtLogin: item.checked,
           path: process.execPath,
-          args: app.isPackaged ? [] : [app.getAppPath()]
+          args: app.isPackaged ? [] : [app.getAppPath()],
         })
         logInfo('autostart', String(item.checked))
-      }
+      },
     },
     {
       label: '开关悬浮球',
@@ -161,7 +161,7 @@ function buildTray(): void {
         if (!ball) return
         if (ball.isVisible()) ball.hide()
         else ball.showInactive()
-      }
+      },
     },
     { type: 'separator' },
     {
@@ -169,8 +169,8 @@ function buildTray(): void {
       click: () => {
         markQuitting()
         app.quit()
-      }
-    }
+      },
+    },
   ])
   tray.setContextMenu(menu)
   tray.on('click', () => togglePanel())
@@ -200,7 +200,7 @@ function wireBridge(): void {
       toPanel(IPC.linkState, { link, origin })
       voice.handleLink(link)
       if (tray) tray.setToolTip(link === 'online' ? '管家 · 已连上 DSH' : '管家 · 未连上 DSH')
-    }
+    },
   })
 }
 
@@ -228,7 +228,7 @@ async function bootstrap(): Promise<void> {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const responseHeaders = {
       ...details.responseHeaders,
-      'Content-Security-Policy': [contentSecurityPolicy()]
+      'Content-Security-Policy': [contentSecurityPolicy()],
     }
     callback({ responseHeaders })
   })
@@ -263,8 +263,10 @@ async function bootstrap(): Promise<void> {
   globalShortcut.register('Control+Alt+J', () => getVoice().wakeByHand())
   logInfo(
     'shortcut',
-    'Ctrl+Alt+H=' + String(globalShortcut.isRegistered('Control+Alt+H')) +
-      ' Ctrl+Alt+J=' + String(globalShortcut.isRegistered('Control+Alt+J'))
+    'Ctrl+Alt+H=' +
+      String(globalShortcut.isRegistered('Control+Alt+H')) +
+      ' Ctrl+Alt+J=' +
+      String(globalShortcut.isRegistered('Control+Alt+J')),
   )
 
   // 调试用：把面板直接打开

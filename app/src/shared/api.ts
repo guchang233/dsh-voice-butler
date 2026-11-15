@@ -1,5 +1,4 @@
 import type {
-  Accent,
   LinkState,
   OverlayPayload,
   PeekData,
@@ -8,7 +7,7 @@ import type {
   SettingsPatch,
   VoiceFrame,
   VoiceState,
-  VoiceStatus
+  VoiceStatus,
 } from './ipc'
 
 export type Unsubscribe = () => void
@@ -23,9 +22,7 @@ export type AudioHubPort = {
 
 /** 人格提示词的读取 / 保存结果 */
 export type PersonaRead = { text: string; isDefault: boolean; error?: string }
-export type PersonaWrite =
-  | { ok: true; text: string; isDefault: boolean }
-  | { ok: false; error: string }
+export type PersonaWrite = { ok: true; text: string; isDefault: boolean } | { ok: false; error: string }
 
 /** preload 通过 contextBridge 暴露到 window.api 的完整形状 */
 export type ButlerApi = {

@@ -4,7 +4,7 @@ import niang02Url from './skins/niang02.png'
 /** 换肤 = 换这只鱼的贴图。内置两张，其余由用户自己导入。 */
 export const SKIN_LIST: Array<{ key: string; label: string; url: string }> = [
   { key: 'whale', label: '鲸鱼娘', url: whaleUrl },
-  { key: 'niang02', label: '鲸鱼娘 · 02', url: niang02Url }
+  { key: 'niang02', label: '鲸鱼娘 · 02', url: niang02Url },
 ]
 
 let custom: Array<{ key: string; label: string; url: string }> = []

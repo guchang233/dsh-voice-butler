@@ -10,7 +10,7 @@ export type SkinKey = 'whale' | 'niang02' | string
 
 export const SKINS: Array<{ key: SkinKey; label: string }> = [
   { key: 'whale', label: '鲸鱼娘' },
-  { key: 'niang02', label: '鲸鱼娘 · 02' }
+  { key: 'niang02', label: '鲸鱼娘 · 02' },
 ]
 
 /** 界面主题：跟随系统 / 纸（亮） / 墨（暗） */
@@ -82,19 +82,11 @@ export const IPC = {
   skinRemove: 'skin:remove',
   skinRename: 'skin:rename',
 
-  overlayState: 'overlay:state'
+  overlayState: 'overlay:state',
 } as const
 
 /** 界面上那颗球/面板的状态 */
-export type VoiceState =
-  | 'idle'
-  | 'listening'
-  | 'thinking'
-  | 'speaking'
-  | 'confirming'
-  | 'offline'
-  | 'error'
-  | 'muted'
+export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'confirming' | 'offline' | 'error' | 'muted'
 
 /** 和 DSH 的连接状态 */
 export type LinkState = 'connecting' | 'online' | 'offline'
@@ -106,7 +98,8 @@ export type LinkState = 'connecting' | 'online' | 'offline'
 /** 工具调用在干什么：干活 / 动鼠标 */
 export type ToolActivity = 'tool' | 'mouse'
 
-export type VoiceFrame =  | { seq: number; t: 'hello'; sessionId?: string; preset?: string | null; title?: string }
+export type VoiceFrame =
+  | { seq: number; t: 'hello'; sessionId?: string; preset?: string | null; title?: string }
   | { seq: number; t: 'state'; running: boolean; phase: string }
   | { seq: number; t: 'user'; text: string; at?: number }
   | { seq: number; t: 'delta'; text: string }
@@ -147,10 +140,10 @@ export const BALL_LEVELS: Array<{ value: BallLevel; label: string; hint: string 
   {
     value: 'top',
     label: '最上层',
-    hint: '连别的置顶窗口也压得住（每秒抢一次最前），全屏应用也盖不住它'
+    hint: '连别的置顶窗口也压得住（每秒抢一次最前），全屏应用也盖不住它',
   },
   { value: 'float', label: '普通置顶', hint: '默认。盖住普通窗口；遇到别的置顶窗口或全屏应用可能被压住' },
-  { value: 'normal', label: '不置顶', hint: '和普通窗口一样，切到别的程序就会被挡住' }
+  { value: 'normal', label: '不置顶', hint: '和普通窗口一样，切到别的程序就会被挡住' },
 ]
 
 export type PublicSettings = {

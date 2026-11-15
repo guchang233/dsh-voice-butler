@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { nextBackoff } from '../shared/backoff'
 import type { LinkState, VoiceFrame } from '../shared/ipc'
 import { logError, logInfo } from './log'
 import { getSettings } from './store'
@@ -20,7 +21,7 @@ const FALLBACK_ORIGIN = 'http://127.0.0.1:63563'
 
 const POLL_WAIT_MS = 20_000
 const POLL_TIMEOUT_MS = 32_000
-const RETRY_MS = 1500
+const RETRY_BASE_MS = 1500
 
 type Handler = {
   frame: (frame: VoiceFrame) => void
@@ -57,6 +58,7 @@ export class DshBridge {
   private lastError: string | null = null
   private handler: Handler | null = null
   private loopPromise: Promise<void> | null = null
+  private retryMs = RETRY_BASE_MS
 
   /** 每次请求前重读 endpoint：令牌和端口都可能被桥换掉 */
   private reloadEndpoint(): void {
@@ -118,7 +120,7 @@ export class DshBridge {
       running: this.runningTurn,
       phase: this.phase,
       origin: this.origin || this.resolveOrigin(),
-      lastError: this.lastError
+      lastError: this.lastError,
     }
   }
 
@@ -149,7 +151,7 @@ export class DshBridge {
     const origin = this.origin || this.resolveOrigin()
     const res = await fetch(`${origin}/voice/persona`, {
       headers: this.authHeaders(false),
-      signal: AbortSignal.timeout(15_000)
+      signal: AbortSignal.timeout(15_000),
     })
     if (!res.ok) throw new Error(`读人格失败（HTTP ${res.status}）`)
     const body = (await res.json()) as { text?: string; isDefault?: boolean }
@@ -162,7 +164,7 @@ export class DshBridge {
       method: 'POST',
       headers: this.authHeaders(true),
       body: JSON.stringify({ text }),
-      signal: AbortSignal.timeout(20_000)
+      signal: AbortSignal.timeout(20_000),
     })
     const body = (await res.json()) as { ok?: boolean; text?: string; isDefault?: boolean; error?: string }
     if (!res.ok || body.ok === false) throw new Error(body.error || `保存人格失败（HTTP ${res.status}）`)
@@ -175,7 +177,7 @@ export class DshBridge {
       method: 'POST',
       headers: this.authHeaders(true),
       body: '{}',
-      signal: AbortSignal.timeout(15_000)
+      signal: AbortSignal.timeout(15_000),
     })
     const body = (await res.json()) as { ok?: boolean; text?: string; error?: string }
     if (!res.ok || body.ok === false) throw new Error(body.error || `恢复默认失败（HTTP ${res.status}）`)
@@ -206,7 +208,7 @@ export class DshBridge {
       method: 'POST',
       headers: this.authHeaders(true),
       body,
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: AbortSignal.timeout(timeoutMs),
     })
     const text = await res.text()
     let parsed: { ok?: boolean; error?: string } = {}
@@ -227,7 +229,7 @@ export class DshBridge {
         const url = `${this.origin}/voice/frames?cursor=${this.cursor}&epoch=${this.epoch}&wait=${POLL_WAIT_MS}`
         const res = await fetch(url, {
           headers: this.authHeaders(false),
-          signal: AbortSignal.timeout(POLL_TIMEOUT_MS)
+          signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
         })
         if (res.status === 401) {
           this.reloadEndpoint()
@@ -269,6 +271,7 @@ export class DshBridge {
         for (const frame of body.frames ?? []) this.emit(frame)
 
         if (typeof body.cursor === 'number' && body.cursor >= 0) this.cursor = body.cursor
+        this.retryMs = RETRY_BASE_MS
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (this.link !== 'offline') logError('bridge poll', message)
@@ -276,7 +279,9 @@ export class DshBridge {
         this.setLink('offline')
         // DSH 可能换了端口：每轮都重新找一遍地址
         this.origin = this.resolveOrigin()
-        await sleep(RETRY_MS)
+        const waited = nextBackoff(this.retryMs, Math.random())
+        this.retryMs = waited.nextMs
+        await sleep(waited.waitMs)
       }
     }
   }

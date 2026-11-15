@@ -8,9 +8,7 @@ export type Item =
 
 export type ToolItem = Extract<Item, { kind: 'tool' }>
 
-export type ThreadRow =
-  | { kind: 'bubble'; item: Item; key: string }
-  | { kind: 'tools'; items: ToolItem[]; key: string }
+export type ThreadRow = { kind: 'bubble'; item: Item; key: string } | { kind: 'tools'; items: ToolItem[]; key: string }
 
 /** 长对话只留最近这些条，更早的在 DSH 会话里 */
 export const MAX_THREAD = 240
@@ -66,7 +64,7 @@ export function applyFrame(items: Item[], frame: VoiceFrame, streamId: { current
             id,
             text: text || (next[idx] as { text: string }).text,
             streaming: false,
-            interrupted: frame.interrupted
+            interrupted: frame.interrupted,
           }
           return next
         }
@@ -74,14 +72,14 @@ export function applyFrame(items: Item[], frame: VoiceFrame, streamId: { current
       if (!text) return items
       return capThread([
         ...items,
-        { kind: 'assistant', id: nextId(), text, streaming: false, interrupted: frame.interrupted }
+        { kind: 'assistant', id: nextId(), text, streaming: false, interrupted: frame.interrupted },
       ])
     }
     case 'tool': {
       if (frame.phase === 'start') {
         return capThread([
           ...items,
-          { kind: 'tool', id: frame.id || nextId(), name: frame.name, args: frame.args ?? '', ok: null }
+          { kind: 'tool', id: frame.id || nextId(), name: frame.name, args: frame.args ?? '', ok: null },
         ])
       }
       const idx = items.findIndex((item) => item.kind === 'tool' && item.id === frame.id)
@@ -101,8 +99,8 @@ export function applyFrame(items: Item[], frame: VoiceFrame, streamId: { current
           name: frame.name || '工具',
           args: '',
           ok: frame.ok === true,
-          detail: frame.detail ?? ''
-        }
+          detail: frame.detail ?? '',
+        },
       ])
     }
     case 'error':

@@ -15,7 +15,7 @@ export class TtsQueue {
     private readonly getConfig: () => { baseUrl: string; apiKey: string; voice: TtsVoice },
     private readonly sink: Sink,
     private readonly onError: (error: unknown) => void,
-    private readonly onLevel?: (busy: boolean) => void
+    private readonly onLevel?: (busy: boolean) => void,
   ) {
     this.controller = new AbortController()
   }
@@ -56,10 +56,10 @@ export class TtsQueue {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({ text, voice_id: voice, format: 'pcm', filter_markdown: true }),
-        signal
+        signal,
       })
 
       if (!res.ok || !res.body) {
@@ -92,7 +92,7 @@ export class SentenceChunker {
 
   constructor(
     private readonly min = 8,
-    private readonly max = 42
+    private readonly max = 42,
   ) {}
 
   push(delta: string): string[] {

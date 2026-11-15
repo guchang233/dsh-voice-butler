@@ -47,7 +47,7 @@ const DEFAULTS: Stored = {
   theme: 'system',
   accent: 'none',
   effect: 'vivid',
-  ballLevel: 'top'
+  ballLevel: 'top',
 }
 
 /**
@@ -109,7 +109,7 @@ function read(): Stored {
       accent: normalizeAccent(parsed.accent),
       effect: normalizeEffect(parsed.effect),
       ballLevel: normalizeBallLevel(parsed.ballLevel),
-      dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined
+      dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined,
     }
   } catch {
     // 文件损坏时用默认值继续，不阻塞启动
@@ -160,7 +160,7 @@ export function getSettings(): PublicLike {
     accent: normalizeAccent(s.accent),
     effect: normalizeEffect(s.effect),
     ballLevel: normalizeBallLevel(s.ballLevel),
-    dshOrigin: s.dshOrigin ?? ''
+    dshOrigin: s.dshOrigin ?? '',
   }
 }
 
@@ -223,7 +223,7 @@ export function savePreferences(patch: {
     accent: normalizeAccent(patch.accent ?? s.accent),
     effect: normalizeEffect(patch.effect ?? s.effect),
     ballLevel: normalizeBallLevel(patch.ballLevel ?? s.ballLevel),
-    dshOrigin: patch.dshOrigin ?? s.dshOrigin
+    dshOrigin: patch.dshOrigin ?? s.dshOrigin,
   })
 }
 

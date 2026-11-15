@@ -98,7 +98,7 @@ function push(): void {
     tools: toolCount,
     mouse: mouseCount,
     since: modeSince,
-    fx
+    fx,
   })
 
   try {

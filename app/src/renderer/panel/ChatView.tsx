@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { AlertTriangle, CornerDownLeft, Loader2, Mic, Search, ShieldCheck, Wrench, X } from 'lucide-react'
 import { WAKE_WORD, type LinkState, type PublicSettings } from '../../shared/ipc'
 import { isDangerousApproval } from '../../shared/confirm'
@@ -26,7 +34,7 @@ export default function ChatView({
   setInput,
   onSend,
   onApprove,
-  inputRef
+  inputRef,
 }: Props): JSX.Element {
   const [holding, setHolding] = useState(false)
   const [openTools, setOpenTools] = useState<Record<string, boolean>>({})
@@ -48,9 +56,7 @@ export default function ChatView({
           <div className="empty">
             <SkinImage className="empty-char" />
             <p className="pane-title">说一句试试</p>
-            <p className="pane-hint">
-              喊一声「{settings?.wakeWord ?? WAKE_WORD}」，按住左边的话筒，或者直接打字。
-            </p>
+            <p className="pane-hint">喊一声「{settings?.wakeWord ?? WAKE_WORD}」，按住左边的话筒，或者直接打字。</p>
             <div className="chips">
               {['现在几点了', '打开记事本', '把音量调到一半', '今天有什么安排'].map((hint) => (
                 <button key={hint} type="button" className="chip" onClick={() => setInput(hint)}>
@@ -75,7 +81,9 @@ export default function ChatView({
       </VirtualThread>
 
       {approval && (
-        <div className={isDangerousApproval(approval.tool, approval.reason) ? 'confirm-sheet is-danger' : 'confirm-sheet'}>
+        <div
+          className={isDangerousApproval(approval.tool, approval.reason) ? 'confirm-sheet is-danger' : 'confirm-sheet'}
+        >
           <div className="confirm-head">
             <ShieldCheck size={15} strokeWidth={1.8} />
             <span>{isDangerousApproval(approval.tool, approval.reason) ? '危险操作，请在这里点' : '需要你点头'}</span>
@@ -177,7 +185,15 @@ function Bubble({ item }: { item: Item }): JSX.Element {
   )
 }
 
-function ToolTimeline({ row, open, onToggle }: { row: Extract<ThreadRow, { kind: 'tools' }>; open: boolean; onToggle: () => void }): JSX.Element {
+function ToolTimeline({
+  row,
+  open,
+  onToggle,
+}: {
+  row: Extract<ThreadRow, { kind: 'tools' }>
+  open: boolean
+  onToggle: () => void
+}): JSX.Element {
   const last = row.items[row.items.length - 1]
   const busy = row.items.some((item) => item.ok === null)
   const failed = row.items.some((item) => item.ok === false)
@@ -213,7 +229,7 @@ function VirtualThread({
   openTools,
   stick,
   empty,
-  children
+  children,
 }: {
   rows: ThreadRow[]
   openTools: Record<string, boolean>

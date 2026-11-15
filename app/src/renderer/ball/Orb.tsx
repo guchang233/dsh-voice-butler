@@ -135,5 +135,3 @@ export default function Orb(): JSX.Element {
     </div>
   )
 }
-
-

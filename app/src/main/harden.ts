@@ -46,7 +46,7 @@ export function contentSecurityPolicy(): string {
       "media-src 'self' blob: mediastream:",
       "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:* https://api.deepseek.com",
       "worker-src 'self' blob:",
-      "font-src 'self' data:"
+      "font-src 'self' data:",
     ].join('; ')
   }
   return [
@@ -60,6 +60,6 @@ export function contentSecurityPolicy(): string {
     "font-src 'self' data:",
     "object-src 'none'",
     "base-uri 'none'",
-    "frame-ancestors 'none'"
+    "frame-ancestors 'none'",
   ].join('; ')
 }

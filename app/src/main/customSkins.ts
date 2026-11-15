@@ -66,13 +66,13 @@ export async function importCustomSkin(): Promise<{ ok: boolean; key?: string; l
     ? await dialog.showOpenDialog(parent, {
         title: '选一张当管家的贴图',
         properties: ['openFile'],
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
       })
     : await dialog.showOpenDialog({
-    title: '选一张当管家的贴图',
-    properties: ['openFile'],
-    filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
-  })
+        title: '选一张当管家的贴图',
+        properties: ['openFile'],
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      })
   if (picked.canceled || !picked.filePaths.length) return { ok: false, error: 'cancelled' }
 
   const source = picked.filePaths[0]

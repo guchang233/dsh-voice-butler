@@ -129,7 +129,7 @@ export default function SkinGrid({ current, onPick, onRefresh }: Props): JSX.Ele
                   key: item.key,
                   label: item.label,
                   x: Math.min(event.clientX, window.innerWidth - 132),
-                  y: Math.min(event.clientY, window.innerHeight - 86)
+                  y: Math.min(event.clientY, window.innerHeight - 86),
                 })
               }}
             >

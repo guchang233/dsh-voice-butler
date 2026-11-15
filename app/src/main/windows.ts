@@ -69,8 +69,8 @@ export function createBall(saved: { x: number; y: number } | null): BrowserWindo
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false
-    }
+      backgroundThrottling: false,
+    },
   })
 
   applyBallLevel(ballLevel)
@@ -177,21 +177,21 @@ function moveFollowers(ballX: number, ballY: number): void {
   const ballBounds = ball?.getBounds()
   const wa = screen.getDisplayNearestPoint({
     x: ballX + Math.round((ballBounds?.width ?? 112) / 2),
-    y: ballY + Math.round((ballBounds?.height ?? 112) / 2)
+    y: ballY + Math.round((ballBounds?.height ?? 112) / 2),
   }).workArea
 
   if (dragPanelOffset && panel && !panel.isDestroyed() && panel.isVisible()) {
     panel.setPosition(
       Math.round(clamp(ballX + dragPanelOffset.x, wa.x + 4, wa.x + wa.width - PANEL_W - 4)),
       Math.round(clamp(ballY + dragPanelOffset.y, wa.y + 4, wa.y + wa.height - PANEL_H - 4)),
-      false
+      false,
     )
   }
   if (dragPeekOffset && peek && !peek.isDestroyed() && peek.isVisible()) {
     peek.setPosition(
       Math.round(clamp(ballX + dragPeekOffset.x, wa.x + 4, wa.x + wa.width - PEEK_W - 4)),
       Math.round(clamp(ballY + dragPeekOffset.y, wa.y + 4, wa.y + wa.height - PEEK_H - 4)),
-      false
+      false,
     )
   }
 }
@@ -237,7 +237,7 @@ function snapToNearestEdge(): void {
   const bounds = ball.getBounds()
   const display = screen.getDisplayNearestPoint({
     x: bounds.x + Math.round(bounds.width / 2),
-    y: bounds.y + Math.round(bounds.height / 2)
+    y: bounds.y + Math.round(bounds.height / 2),
   })
   const wa = display.workArea
 
@@ -246,21 +246,21 @@ function snapToNearestEdge(): void {
     {
       x: wa.x + wa.width - bounds.width - SNAP_MARGIN,
       y: bounds.y,
-      d: Math.abs(bounds.x - (wa.x + wa.width - bounds.width - SNAP_MARGIN))
+      d: Math.abs(bounds.x - (wa.x + wa.width - bounds.width - SNAP_MARGIN)),
     },
     { x: bounds.x, y: wa.y + SNAP_MARGIN, d: Math.abs(bounds.y - (wa.y + SNAP_MARGIN)) },
     {
       x: bounds.x,
       y: wa.y + wa.height - bounds.height - SNAP_MARGIN,
-      d: Math.abs(bounds.y - (wa.y + wa.height - bounds.height - SNAP_MARGIN))
-    }
+      d: Math.abs(bounds.y - (wa.y + wa.height - bounds.height - SNAP_MARGIN)),
+    },
   ]
 
   const target = candidates.reduce((a, b) => (b.d < a.d ? b : a))
   const from = { x: bounds.x, y: bounds.y }
   const to = {
     x: clamp(target.x, wa.x, wa.x + wa.width - bounds.width),
-    y: clamp(target.y, wa.y, wa.y + wa.height - bounds.height)
+    y: clamp(target.y, wa.y, wa.y + wa.height - bounds.height),
   }
 
   animatePosition(
@@ -283,7 +283,7 @@ function snapToNearestEdge(): void {
         const { x, y } = peekBounds()
         peek?.setPosition(Math.round(x), Math.round(y), false)
       }
-    }
+    },
   )
 }
 
@@ -303,7 +303,7 @@ function animatePosition(
   to: { x: number; y: number },
   duration: number,
   onStep?: (x: number, y: number) => void,
-  done?: () => void
+  done?: () => void,
 ): void {
   const start = Date.now()
   const timer = setInterval(() => {
@@ -347,8 +347,8 @@ export function createPanel(): BrowserWindow {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false
-    }
+      backgroundThrottling: false,
+    },
   })
 
   applyBallLevel(ballLevel)
@@ -404,8 +404,8 @@ export function createPeek(): BrowserWindow {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      backgroundThrottling: false
-    }
+      backgroundThrottling: false,
+    },
   })
   applyBallLevel(ballLevel)
   peek.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -420,7 +420,7 @@ function peekBounds(): { x: number; y: number } {
   const wa = ballBounds
     ? screen.getDisplayNearestPoint({
         x: ballBounds.x + Math.round(ballBounds.width / 2),
-        y: ballBounds.y + Math.round(ballBounds.height / 2)
+        y: ballBounds.y + Math.round(ballBounds.height / 2),
       }).workArea
     : screen.getPrimaryDisplay().workArea
   const gap = 10
@@ -428,7 +428,7 @@ function peekBounds(): { x: number; y: number } {
   if (!ballBounds) {
     return {
       x: clamp(wa.x + wa.width - PEEK_W - 20, wa.x + 8, wa.x + wa.width - PEEK_W - 8),
-      y: wa.y + 80
+      y: wa.y + 80,
     }
   }
 
@@ -565,8 +565,8 @@ export function createOverlay(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       // 特效关着的时候允许节流；亮起来时由 overlay.ts 再关掉
-      backgroundThrottling: true
-    }
+      backgroundThrottling: true,
+    },
   })
   hookOverlayDisplays()
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
@@ -585,7 +585,11 @@ export function getPanel(): BrowserWindow | null {
   return panel
 }
 
-function overlapsPanel(a: { x: number; y: number; width: number; height: number }, b: Electron.Rectangle, margin: number): boolean {
+function overlapsPanel(
+  a: { x: number; y: number; width: number; height: number },
+  b: Electron.Rectangle,
+  margin: number,
+): boolean {
   return !(
     a.x + a.width + margin <= b.x ||
     b.x + b.width + margin <= a.x ||
@@ -602,7 +606,7 @@ function anchorBounds(): { x: number; y: number } {
   }
   const display = screen.getDisplayNearestPoint({
     x: ballBounds.x + Math.round(ballBounds.width / 2),
-    y: ballBounds.y + Math.round(ballBounds.height / 2)
+    y: ballBounds.y + Math.round(ballBounds.height / 2),
   })
   const wa = display.workArea
   const gap = 12
@@ -615,8 +619,7 @@ function anchorBounds(): { x: number; y: number } {
   const maxY = wa.y + wa.height - PANEL_H - 8
   const fits = (xx: number, yy: number): boolean =>
     !overlapsPanel({ x: xx, y: yy, width: PANEL_W, height: PANEL_H }, ballBounds, gap)
-  const sideY = (top: boolean): number =>
-    top ? ballBounds.y - PANEL_H - gap : ballBounds.y + ballBounds.height + gap
+  const sideY = (top: boolean): number => (top ? ballBounds.y - PANEL_H - gap : ballBounds.y + ballBounds.height + gap)
 
   const preferTop = ballBounds.y + ballBounds.height / 2 > wa.y + wa.height / 2
 
@@ -679,8 +682,3 @@ export function togglePanel(): void {
   if (visible) hidePanel()
   else showPanel()
 }
-
-
-
-
-
