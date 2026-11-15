@@ -25,7 +25,7 @@ function hasWebGL2(): boolean {
 }
 
 export default function Overlay(): JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const hostRef = useRef<HTMLDivElement | null>(null)
   const workerRef = useRef<Worker | null>(null)
   const [mode, setMode] = useState<Mode>('off')
   const [fx, setFx] = useState<EffectLevel>('vivid')
@@ -64,8 +64,13 @@ export default function Overlay(): JSX.Element {
 
   useEffect(() => {
     if (css || fx === 'off') return
-    const canvas = canvasRef.current
-    if (!canvas || workerRef.current) return
+    const host = hostRef.current
+    if (!host) return
+    // 开发模式的 StrictMode 会把 effect 拆掉再装上。画布只能移交一次，所以每次都新建一张。
+    const canvas = document.createElement('canvas')
+    canvas.setAttribute('aria-hidden', 'true')
+    canvas.style.cssText = 'pointer-events:none;display:block;width:100%;height:100%'
+    host.replaceChildren(canvas)
     let worker: Worker
     try {
       worker = new Worker(new URL('./aurora.worker.ts', import.meta.url), { type: 'module' })
@@ -88,7 +93,7 @@ export default function Overlay(): JSX.Element {
     } catch {
       setCss(true)
       worker.terminate()
-      workerRef.current = null
+      if (workerRef.current === worker) workerRef.current = null
       return
     }
     worker.postMessage({ type: 'state', mode, fx })
@@ -96,7 +101,8 @@ export default function Overlay(): JSX.Element {
     return () => {
       window.removeEventListener('resize', resize)
       worker.terminate()
-      workerRef.current = null
+      if (workerRef.current === worker) workerRef.current = null
+      canvas.remove()
     }
   }, [css, fx])
 
@@ -117,11 +123,5 @@ export default function Overlay(): JSX.Element {
     )
   }
 
-  return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden="true"
-      style={{ pointerEvents: 'none', display: 'block', width: '100%', height: '100%' }}
-    />
-  )
+  return <div ref={hostRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none' }} />
 }
