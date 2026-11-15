@@ -1,11 +1,12 @@
 import { app, globalShortcut, Menu, nativeImage, nativeTheme, session, Tray } from 'electron'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { getBridge } from './bridge'
 import { registerIpc } from './ipc'
 import { installCrashLogging, logError, logInfo } from './log'
 import { runWakeWordSelfTest } from './audio/selftest'
 import { buildPeekData } from './peek'
+import { lockOverlayMode } from './overlay'
 import { getSettings, savePreferences } from './store'
 import { getVoice } from './voice'
 import { SKINS, IPC } from '../shared/ipc'
@@ -30,8 +31,24 @@ import {
  * 会话过程铺到面板上）。想和做都在 DSH 的管家会话里，本进程不持有任何对话状态。
  */
 
-installCrashLogging()
+/** 调试：读 userData\overlay-mode.txt 里的模式名，读完即删（一次性的） */
+function readOverlayModeHint(): string {
+  try {
+    const file = join(app.getPath('userData'), 'overlay-mode.txt')
+    if (!existsSync(file)) return ''
+    const text = readFileSync(file, 'utf8').trim()
+    try {
+      rmSync(file)
+    } catch {
+      /* ignore */
+    }
+    return text
+  } catch {
+    return ''
+  }
+}
 
+installCrashLogging()
 // 透明窗口在部分 Windows 驱动上会因遮挡判定而停画
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
 // 让 AudioContext 不用等用户手势就能跑（麦克风采集与 TTS 播放都靠它）
@@ -205,6 +222,12 @@ async function bootstrap(): Promise<void> {
   // 调试用：强制纸/墨主题
   const theme = process.env['BUTLER_THEME']
   if (theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme
+  // 调试用：把顶层特效钉在某个模式（wake / think / act / mouse），核对配色和强度。
+  // 优先级：环境变量 > userData\overlay-mode.txt（文件读完即删，不会卡住不出特效）
+  const overlayMode = process.env['BUTLER_OVERLAY_MODE'] || readOverlayModeHint()
+  if (overlayMode && ['wake', 'think', 'act', 'mouse'].includes(overlayMode)) {
+    setTimeout(() => lockOverlayMode(overlayMode as 'wake' | 'think' | 'act' | 'mouse'), 1200)
+  }
   // 调试用：直接弹一次「时段 + 余额」小卡片（等价于右键悬浮球）
   if (process.env['BUTLER_PEEK'] === '1') {
     setTimeout(() => {

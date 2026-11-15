@@ -1,5 +1,6 @@
 import type {
   LinkState,
+  OverlayPayload,
   PeekData,
   PublicSettings,
   Result,
@@ -57,9 +58,7 @@ export type ButlerApi = {
   importSkin: () => Promise<{ ok: boolean; key?: string; label?: string; error?: string }>
   removeSkin: (key: string) => Promise<boolean>
   renameSkin: (key: string, label: string) => Promise<{ ok: boolean; label?: string; error?: string }>
-  onOverlay: (
-    fn: (payload: { mode: 'off' | 'voice' | 'action'; phase: string; tools: number }) => void
-  ) => Unsubscribe
+  onOverlay: (fn: (payload: OverlayPayload) => void) => Unsubscribe
 
   onPanelShown: (handler: () => void) => Unsubscribe
   onBallHover: (handler: (inside: boolean) => void) => Unsubscribe

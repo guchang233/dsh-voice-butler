@@ -426,8 +426,9 @@ export class Voice {
         break
       }
       case 'tool': {
-        if (frame.phase === 'start') overlayToolStart()
-        else overlayToolEnd()
+        const activity = frame.activity === 'mouse' ? 'mouse' : 'tool'
+        if (frame.phase === 'start') overlayToolStart(activity)
+        else overlayToolEnd(activity)
         break
       }
       case 'approval': {

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IPC,
   type LinkState,
+  type OverlayPayload,
   type PeekData,
   type PublicSettings,
   type Result,
@@ -62,13 +63,8 @@ const api: ButlerApi = {
   removeSkin: (key: string): Promise<boolean> => ipcRenderer.invoke(IPC.skinRemove, key),
   renameSkin: (key: string, label: string): Promise<{ ok: boolean; label?: string; error?: string }> =>
     ipcRenderer.invoke(IPC.skinRename, { key, label }),
-  onOverlay: (
-    fn: (payload: { mode: 'off' | 'voice' | 'action'; phase: string; tools: number }) => void
-  ): Unsubscribe => {
-    const handler = (
-      _e: unknown,
-      payload: { mode: 'off' | 'voice' | 'action'; phase: string; tools: number }
-    ): void => fn(payload)
+  onOverlay: (fn: (payload: OverlayPayload) => void): Unsubscribe => {
+    const handler = (_e: unknown, payload: OverlayPayload): void => fn(payload)
     ipcRenderer.on(IPC.overlayState, handler)
     return () => ipcRenderer.removeListener(IPC.overlayState, handler)
   },

@@ -457,8 +457,16 @@ export function getOverlay(): BrowserWindow | null {
  * 只在需要时显示，隐藏时完全不吃性能。
  */
 export function createOverlay(): BrowserWindow {
-  const display = screen.getPrimaryDisplay()
-  const { x, y, width, height } = display.bounds
+  // 铺满整个虚拟桌面（多屏时取所有屏幕的外接矩形），特效才会出现在「屏幕的四条边」
+  const displays = screen.getAllDisplays()
+  const minX = Math.min(...displays.map((d) => d.bounds.x))
+  const minY = Math.min(...displays.map((d) => d.bounds.y))
+  const maxX = Math.max(...displays.map((d) => d.bounds.x + d.bounds.width))
+  const maxY = Math.max(...displays.map((d) => d.bounds.y + d.bounds.height))
+  const x = minX
+  const y = minY
+  const width = maxX - minX
+  const height = maxY - minY
   overlayWin = new BrowserWindow({
     x,
     y,

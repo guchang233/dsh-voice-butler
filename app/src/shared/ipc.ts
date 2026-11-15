@@ -95,8 +95,10 @@ export type LinkState = 'connecting' | 'online' | 'offline'
  * DSH 发来的一帧。seq 单调递增，面板只追加不重排。
  * 字段与 butler-bridge 的帧一一对应。
  */
-export type VoiceFrame =
-  | { seq: number; t: 'hello'; sessionId?: string; preset?: string | null; title?: string }
+/** 工具调用在干什么：干活 / 动鼠标 */
+export type ToolActivity = 'tool' | 'mouse'
+
+export type VoiceFrame =  | { seq: number; t: 'hello'; sessionId?: string; preset?: string | null; title?: string }
   | { seq: number; t: 'state'; running: boolean; phase: string }
   | { seq: number; t: 'user'; text: string; at?: number }
   | { seq: number; t: 'delta'; text: string }
@@ -110,11 +112,24 @@ export type VoiceFrame =
       args?: string
       ok?: boolean
       detail?: string
+      /** 这次调用是在干活（tool）还是在动鼠标/敲键盘操作界面（mouse） */
+      activity?: ToolActivity
     }
   | { seq: number; t: 'approval'; id: string; tool: string; reason: string }
   | { seq: number; t: 'approval-done'; id: string; outcome: string }
   | { seq: number; t: 'error'; message: string }
   | { seq: number; t: 'reset' }
+
+/** 顶层特效：模式决定颜色，since 是进入该模式的时刻（开场动画用） */
+export type OverlayMode = 'off' | 'wake' | 'think' | 'act' | 'mouse'
+
+export type OverlayPayload = {
+  mode: OverlayMode
+  phase: string
+  tools: number
+  mouse: number
+  since: number
+}
 
 export type PublicSettings = {
   skin: SkinKey

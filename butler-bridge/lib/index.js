@@ -219,6 +219,41 @@ function summarizeTool(rawArgs) {
   return clip(rawArgs, 140)
 }
 
+/**
+ * 这次工具调用在干什么：只是「干活」，还是已经在动鼠标 / 敲键盘操作界面。
+ *
+ * 壳那边靠这个换特效颜色：干活 = 橙色，动鼠标 = 橙色 + 四边全亮。
+ * 判断在桥里做，因为这里拿得到**完整**参数（摘要会被截到 140 字）。
+ */
+const MOUSE_PATTERNS = [
+  /setcursor/i,
+  /mouse_event/i,
+  /sendinput/i,
+  /mouseinput/i,
+  /cursor\.position/i,
+  /cursor\]::position/i,
+  /\[system\.windows\.forms\.cursor\]/i,
+  /pyautogui/i,
+  /mouse\.move/i,
+  /\.click\s*\(/i,
+  /mouse_click/i,
+  /nircmd(\.exe)?\s+(setcursor|click|sendmouse|move)/i,
+  /sendkeys/i,
+  /移动鼠标/,
+  /鼠标移到/,
+  /点击坐标/,
+  /点击窗口/,
+  /模拟点击/
+]
+
+function classifyTool(name, rawArgs) {
+  const text = `${name ?? ''} ${typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs ?? {})}`
+  for (const pattern of MOUSE_PATTERNS) {
+    if (pattern.test(text)) return 'mouse'
+  }
+  return 'tool'
+}
+
 /* -------------------------------------------------------------------- 主体 */
 
 export function apply(ctx) {
@@ -237,6 +272,8 @@ export function apply(ctx) {
   let phase = 'idle'
   let lastError = ''
   let presetOk = null
+  /** callId → 'tool' | 'mouse'，tool/result 回来时才知道该收哪种特效 */
+  const callKinds = new Map()
 
   function wakePollers() {
     for (const deliver of [...waiters]) deliver()
@@ -427,27 +464,44 @@ export function apply(ctx) {
           setPhase('thinking')
           break
         }
-        case 'tool/call':
+        case 'tool/call': {
           setPhase('tool')
+          const callId = String(data.callId ?? '')
+          const activity = classifyTool(data.name, data.arguments)
+          if (callId) {
+            callKinds.set(callId, activity)
+            // 防止长会话里无限增长
+            if (callKinds.size > 200) {
+              const oldest = callKinds.keys().next().value
+              callKinds.delete(oldest)
+            }
+          }
           push({
             t: 'tool',
             phase: 'start',
-            id: String(data.callId ?? ''),
+            id: callId,
             name: String(data.name ?? ''),
-            args: summarizeTool(data.arguments)
+            args: summarizeTool(data.arguments),
+            activity
           })
           break
-        case 'tool/result':
+        }
+        case 'tool/result': {
+          const endId = String(data.message?.toolCallId ?? '')
+          const activity = callKinds.get(endId) ?? 'tool'
+          callKinds.delete(endId)
           push({
             t: 'tool',
             phase: 'end',
-            id: String(data.message?.toolCallId ?? ''),
+            id: endId,
             name: '',
             ok: !data.error,
-            detail: clip(textOf(data.message?.content), 200)
+            detail: clip(textOf(data.message?.content), 200),
+            activity
           })
           setPhase('thinking')
           break
+        }
         case 'turn/end': {
           const reason = data.reason ?? {}
           setRunning(false)
