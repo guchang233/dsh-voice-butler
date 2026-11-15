@@ -57,6 +57,7 @@ export class Voice {
   private utterance: Int16Array[] = []
   private micEnabled = true
   private lastLevelSent = 0
+  private lastLoudLoggedAt = 0
   private micChunks = 0
   private micConfirmed = false
   private capture: Capture | null = null
@@ -192,7 +193,31 @@ export class Voice {
       this.send(IPC.micLevel, Math.min(1, rms(chunk) * 6))
     }
 
-    if (this.state === 'listening' || this.state === 'confirming') {
+    // 麦克风到底听不听得见：有声音就记一笔（5 秒最多一条），排查「喊了没反应」用
+    const level = rms(chunk)
+    if (level > 0.012 && now - this.lastLoudLoggedAt > 5000) {
+      this.lastLoudLoggedAt = now
+      logInfo('voice', `mic 有声：rms=${level.toFixed(3)}，当前状态 ${this.state}`)
+    }
+
+    if (this.state === 'listening') {
+      // 已经在听的时候也认唤醒词：喊一声就当作「重新叫我」——
+      // 否则连续对话一直在听，喊唤醒词既没响动也不弹面板，看起来就像坏了。
+      const keyword = this.watcher?.feed(chunk) ?? null
+      if (keyword) {
+        logInfo('voice', 'listening 中又喊了唤醒词：重新收音')
+        this.utterance = []
+        this.endpointer.reset()
+        this.triggerWake(keyword)
+        return
+      }
+      this.utterance.push(chunk)
+      const result = this.endpointer.push(chunk)
+      if (result.done) void this.finishUtterance(result.reason)
+      return
+    }
+
+    if (this.state === 'confirming') {
       this.utterance.push(chunk)
       const result = this.endpointer.push(chunk)
       if (result.done) void this.finishUtterance(result.reason)

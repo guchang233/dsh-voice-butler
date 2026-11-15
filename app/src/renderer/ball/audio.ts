@@ -7,6 +7,12 @@ let micCtx: AudioContext | null = null
 let micNode: ScriptProcessorNode | null = null
 let micStream: MediaStream | null = null
 let micGain: GainNode | null = null
+/** 上一次真正收到麦克风回调的时刻：太久没有 = 采集管线死了，得重开 */
+let micLastAt = 0
+let micRestartTimer: ReturnType<typeof setTimeout> | null = null
+let micRestartCount = 0
+let micWatchdog: ReturnType<typeof setInterval> | null = null
+let micChunkSink: ((chunk: Int16Array) => void) | null = null
 
 let playCtx: AudioContext | null = null
 let playCtxDefaultRate = false
@@ -199,6 +205,7 @@ function toInt16(samples: Float32Array): Int16Array {
 }
 
 export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<boolean> {
+  micChunkSink = onChunk
   if (micNode) return true
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -218,6 +225,7 @@ export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<bo
 
     let pending: Float32Array = new Float32Array(0)
     micNode.onaudioprocess = (event) => {
+      micLastAt = Date.now()
       const input = event.inputBuffer.getChannelData(0)
       const resampled = downsample(input, rate, TARGET_RATE)
       const merged = new Float32Array(pending.length + resampled.length)
@@ -230,17 +238,55 @@ export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<bo
         return
       }
       pending = merged.slice(usable)
-      onChunk(toInt16(merged.subarray(0, usable)))
+      micChunkSink?.(toInt16(merged.subarray(0, usable)))
     }
 
     source.connect(micNode)
     micNode.connect(micGain)
     micGain.connect(micCtx.destination)
+    micLastAt = Date.now()
+    micRestartCount = 0
+
+    // 设备换了 / 轨道断了：这台机器的音频栈确实会抽风，自己爬起来
+    for (const track of micStream.getAudioTracks()) {
+      track.addEventListener('ended', () => requestMicRestart('track ended'))
+      track.addEventListener('mute', () => requestMicRestart('track muted'))
+    }
+    startMicWatchdog()
     return true
   } catch (error) {
     console.warn('麦克风打开失败', error)
     return false
   }
+}
+
+/** 重开采集：先关掉旧的，等 800ms 再开，避免和关设备打架 */
+function requestMicRestart(reason: string): void {
+  if (micRestartTimer) return
+  if (micRestartCount > 6) return
+  console.error('[ball-audio] 麦克风要重开：' + reason)
+  micRestartTimer = setTimeout(() => {
+    micRestartTimer = null
+    micRestartCount += 1
+    const sink = micChunkSink
+    stopMic()
+    if (sink) void startMic(sink)
+  }, 800)
+}
+
+/** 外部（devicechange）要求重开采集 */
+export function restartMic(): void {
+  requestMicRestart('录音设备变化')
+}
+
+function startMicWatchdog(): void {  if (micWatchdog) return
+  micWatchdog = setInterval(() => {
+    // 回调停了 4 秒 = 采集管线死了（静音也会回调，所以「没回调」才是真死了）
+    if (micLastAt && Date.now() - micLastAt > 4000) {
+      micLastAt = Date.now()
+      requestMicRestart('4 秒没有回调')
+    }
+  }, 2000)
 }
 
 export function stopMic(): void {
