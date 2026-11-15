@@ -9,8 +9,9 @@ import { buildPeekData } from './peek'
 import { lockOverlayMode } from './overlay'
 import { getSettings, savePreferences } from './store'
 import { getVoice } from './voice'
-import { SKINS, IPC } from '../shared/ipc'
+import { BALL_LEVELS, SKINS, IPC } from '../shared/ipc'
 import {
+  applyBallLevel,
   broadcastSkin,
   createBall,
   createOverlay,
@@ -113,6 +114,18 @@ function buildTray(): void {
       }))
     },
     {
+      label: '悬浮球层级',
+      submenu: BALL_LEVELS.map((item) => ({
+        label: item.label,
+        type: 'radio' as const,
+        checked: getSettings().ballLevel === item.value,
+        click: () => {
+          savePreferences({ ballLevel: item.value })
+          applyBallLevel(item.value)
+        }
+      }))
+    },
+    {
       label: '开机启动',
       type: 'checkbox' as const,
       checked: app.getLoginItemSettings().openAtLogin,
@@ -194,6 +207,8 @@ async function bootstrap(): Promise<void> {
   createBall(settings.ballPosition)
   createPanel()
   createOverlay()
+  // 层级：设置里选的（最上层 / 普通置顶 / 不置顶），新建窗口时已经带过一次，这里再钉一次
+  applyBallLevel(settings.ballLevel)
   registerIpc()
   buildTray()
 

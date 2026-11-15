@@ -1,6 +1,6 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
-import { IPC } from '../shared/ipc'
+import { IPC, type BallLevel } from '../shared/ipc'
 import { logError, logInfo } from './log'
 import { saveBallPosition } from './store'
 
@@ -68,7 +68,7 @@ export function createBall(saved: { x: number; y: number } | null): BrowserWindo
     }
   })
 
-  ball.setAlwaysOnTop(true, 'screen-saver')
+  applyBallLevel(ballLevel)
   ball.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   // 不做鼠标穿透：Windows 的 SetIgnoreMouseEvents 在「刚改过状态、鼠标还没动」时会丢点击，
   // 表现为「点一下之后就一直穿过去」。窗口缩到正好包住鲸鱼，四角那点空白当作代价。
@@ -110,6 +110,58 @@ export function stopHoverWatch(): void {
 }
 
 
+
+/* --------------------------------------------------------------- 窗口层级 */
+
+/**
+ * 悬浮球（以及面板、右键卡片）的层级。
+ *
+ *   top    —— screen-saver，全屏应用也盖得住，还压在顶层特效之上
+ *   float  —— floating，盖住普通窗口，全屏应用会盖住它
+ *   normal —— 不置顶，和普通窗口一样
+ *
+ * 读一次存着，新建窗口时照着设，避免「先创建后补设」闪一下。
+ */
+let ballLevel: BallLevel = 'top'
+/** 「最上层」时每秒抢一次置顶：Windows 上 top 和 float 都是 WS_EX_TOPMOST，
+    区别只在于谁最后 SetWindowPos——所以真要压过别的置顶窗口就得自己反复抢 */
+let raiseTimer: NodeJS.Timeout | null = null
+
+export function applyBallLevel(level: BallLevel): void {
+  ballLevel = level
+  const onTop = level !== 'normal'
+  const electronLevel = level === 'top' ? 'screen-saver' : 'floating'
+
+  for (const win of [ball, panel, peek]) {
+    if (!win || win.isDestroyed()) continue
+    try {
+      win.setAlwaysOnTop(onTop, electronLevel)
+      if (onTop && win.isVisible()) win.moveTop()
+    } catch (error) {
+      logError('applyBallLevel', error)
+    }
+  }
+
+  if (raiseTimer) {
+    clearInterval(raiseTimer)
+    raiseTimer = null
+  }
+  if (level === 'top') {
+    raiseTimer = setInterval(() => {
+      for (const win of [ball, panel, peek]) {
+        try {
+          if (win && !win.isDestroyed() && win.isVisible()) win.moveTop()
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 1000)
+  }
+}
+
+export function getBallLevel(): BallLevel {
+  return ballLevel
+}
 
 /* --------------------------------------------------------------- 拖拽与吸附 */
 
@@ -317,7 +369,7 @@ export function createPanel(): BrowserWindow {
     }
   })
 
-  panel.setAlwaysOnTop(true, 'floating')
+  applyBallLevel(ballLevel)
   // 构造参数里的 skipTaskbar 有时被 show() 还原，这里再钉一次
   panel.setSkipTaskbar(true)
   panel.setMenu(null)
@@ -373,7 +425,7 @@ export function createPeek(): BrowserWindow {
       backgroundThrottling: false
     }
   })
-  peek.setAlwaysOnTop(true, 'screen-saver')
+  applyBallLevel(ballLevel)
   peek.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   peek.setMenu(null)
   loadPage(peek, 'peek')

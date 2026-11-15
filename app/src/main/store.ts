@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { WAKE_WORD, type SkinKey, type ThemeMode } from '../shared/ipc'
+import { WAKE_WORD, type BallLevel, type SkinKey, type ThemeMode } from '../shared/ipc'
 
 /**
  * 落盘结构。
@@ -26,6 +26,8 @@ type Stored = {
   skin?: string
   /** 界面主题 */
   theme?: ThemeMode
+  /** 悬浮球层级：最上层 / 普通置顶 / 不置顶 */
+  ballLevel?: BallLevel
   /** 手动指定的 DSH 地址；留空则读 endpoint.json */
   dshOrigin?: string
 }
@@ -38,7 +40,8 @@ const DEFAULTS: Stored = {
   bargeIn: false,
   continuous: false,
   skin: 'whale',
-  theme: 'system'
+  theme: 'system',
+  ballLevel: 'top'
 }
 
 /**
@@ -56,6 +59,10 @@ function normalizeTheme(value: unknown): ThemeMode {
   return value === 'light' || value === 'dark' ? value : 'system'
 }
 
+function normalizeBallLevel(value: unknown): BallLevel {
+  return value === 'float' || value === 'normal' ? value : 'top'
+}
+
 let cache: Stored | null = null
 
 const settingsPath = (): string => join(app.getPath('userData'), 'settings.json')
@@ -68,7 +75,11 @@ function read(): Stored {
     return cache
   }
   try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<Stored>
+    const raw = readFileSync(file, 'utf8')
+    // 记事本 / PowerShell 5.1 写进来会带 BOM，JSON.parse 会直接抛——
+    // 以前一抛就整份回落成默认值（钥匙、位置、层级全丢），这里先剥掉
+    const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
+    const parsed = JSON.parse(text) as Partial<Stored>
     cache = {
       ...DEFAULTS,
       apiKey: parsed.apiKey,
@@ -81,6 +92,7 @@ function read(): Stored {
       continuous: parsed.continuous === true,
       skin: normalizeSkin(parsed.skin),
       theme: normalizeTheme(parsed.theme),
+      ballLevel: normalizeBallLevel(parsed.ballLevel),
       dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined
     }
   } catch {
@@ -110,6 +122,7 @@ export type PublicLike = {
   continuous: boolean
   skin: SkinKey
   theme: ThemeMode
+  ballLevel: BallLevel
   dshOrigin: string
 }
 
@@ -126,6 +139,7 @@ export function getSettings(): PublicLike {
     continuous: s.continuous === true,
     skin: normalizeSkin(s.skin),
     theme: normalizeTheme(s.theme),
+    ballLevel: normalizeBallLevel(s.ballLevel),
     dshOrigin: s.dshOrigin ?? ''
   }
 }
@@ -170,6 +184,7 @@ export function savePreferences(patch: {
   continuous?: boolean
   skin?: SkinKey
   theme?: ThemeMode
+  ballLevel?: BallLevel
   dshOrigin?: string
 }): void {
   const s = read()
@@ -183,6 +198,7 @@ export function savePreferences(patch: {
     continuous: patch.continuous ?? s.continuous === true,
     skin: normalizeSkin(patch.skin ?? s.skin),
     theme: normalizeTheme(patch.theme ?? s.theme),
+    ballLevel: normalizeBallLevel(patch.ballLevel ?? s.ballLevel),
     dshOrigin: patch.dshOrigin ?? s.dshOrigin
   })
 }

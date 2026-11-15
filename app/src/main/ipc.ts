@@ -11,6 +11,7 @@ import {
   broadcastSkin,
   endDrag,
   hidePanel,
+  applyBallLevel,
   hidePeek,
   peekVisible,
   showPeekWith,
@@ -26,7 +27,8 @@ const settingsPatch = z.object({
   bargeIn: z.boolean().optional(),
   dshOrigin: z.string().max(300).optional(),
   theme: z.enum(['system', 'light', 'dark']).optional(),
-  continuous: z.boolean().optional()
+  continuous: z.boolean().optional(),
+  ballLevel: z.enum(['top', 'float', 'normal']).optional()
 })
 
 /** 主题一改，三个窗口一起跟着变（CSS 里用的是 prefers-color-scheme） */
@@ -91,11 +93,16 @@ export function registerIpc(): void {
       bargeIn: patch.bargeIn,
       dshOrigin: patch.dshOrigin,
       theme: patch.theme,
-      continuous: patch.continuous
+      continuous: patch.continuous,
+      ballLevel: patch.ballLevel
     })
     if (patch.micEnabled !== undefined) getVoice().setMicEnabled(patch.micEnabled)
     if (patch.theme !== undefined) applyTheme(patch.theme)
     if (patch.continuous !== undefined) getVoice().setContinuous(patch.continuous)
+    if (patch.ballLevel !== undefined) {
+      applyBallLevel(patch.ballLevel)
+      logInfo('layers', 'ball level = ' + patch.ballLevel)
+    }
     return { ok: true as const }
   })
 

@@ -15,7 +15,9 @@ import {
   X
 } from 'lucide-react'
 import {
+  BALL_LEVELS,
   WAKE_WORD,
+  type BallLevel,
   type LinkState,
   type PublicSettings,
   type ThemeMode,
@@ -557,6 +559,7 @@ function SettingsView({
   const [bargeIn, setBargeIn] = useState(settings?.bargeIn ?? false)
   const [continuous, setContinuous] = useState(settings?.continuous ?? false)
   const [theme, setTheme] = useState<ThemeMode>(settings?.theme ?? 'system')
+  const [ballLevel, setBallLevel] = useState<BallLevel>(settings?.ballLevel ?? 'top')
   const [persona, setPersona] = useState('')
   const [personaIsDefault, setPersonaIsDefault] = useState(true)
   const [personaOpen, setPersonaOpen] = useState(false)
@@ -712,6 +715,32 @@ function SettingsView({
             ))}
           </div>
           <span className="field-hint">面板、悬浮球、顶部特效一起换；「跟随系统」就听 Windows 的。</span>
+        </div>
+
+        <div className="field">
+          <span className="field-label">悬浮球层级</span>
+          <div className="seg-group">
+            {BALL_LEVELS.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={ballLevel === item.value ? 'seg-item is-on' : 'seg-item'}
+                onClick={() => {
+                  setBallLevel(item.value)
+                  void (async () => {
+                    await window.api.saveSettings({ ballLevel: item.value })
+                    await onRefresh()
+                  })()
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <span className="field-hint">
+            {BALL_LEVELS.find((item) => item.value === ballLevel)?.hint ?? ''}
+            面板和右键卡片会跟着一起变。
+          </span>
         </div>
 
         <label className="switch-row">
