@@ -17,26 +17,11 @@ let micChunkSink: ((chunk: Int16Array) => void) | null = null
 let micAnalyser: AnalyserNode | null = null
 let playAnalyser: AnalyserNode | null = null
 const bandListeners = new Set<(bands: number[]) => void>()
-let bandPorts: MessagePort[] = []
-let bandTimer: ReturnType<typeof setInterval> | null = null
 
-/** 悬浮球自己画频谱用。面板和特效层走 MessagePort。 */
+/** 悬浮球自己画频谱用。面板和特效层那边由 preload 代发（端口过不了 contextBridge）。 */
 export function subscribeBands(listener: (bands: number[]) => void): () => void {
   bandListeners.add(listener)
   return () => bandListeners.delete(listener)
-}
-
-export function setBandPorts(ports: MessagePort[]): void {
-  for (const port of bandPorts) {
-    try {
-      port.close()
-    } catch {
-      /* 已经关了 */
-    }
-  }
-  bandPorts = ports
-  for (const port of ports) port.start()
-  ensureBandTimer()
 }
 
 function readBands(analyser: AnalyserNode | null, into: number[]): void {
@@ -57,15 +42,15 @@ function publishBands(): void {
   readBands(micAnalyser, bands)
   readBands(playAnalyser, bands)
   for (const listener of bandListeners) listener(bands)
-  const payload = { bands }
-  for (const port of bandPorts) {
-    try {
-      port.postMessage(payload)
-    } catch {
-      /* 对端关了 */
-    }
+  // 面板和特效层：端口留在 preload，这里只递数组
+  try {
+    window.api.postAudioBands(bands)
+  } catch {
+    /* 桥没准备好就算了，频谱只是装饰 */
   }
 }
+
+let bandTimer: ReturnType<typeof setInterval> | null = null
 
 function ensureBandTimer(): void {
   if (bandTimer) return

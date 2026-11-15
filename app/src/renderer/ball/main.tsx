@@ -1,7 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import Orb from './Orb'
-import { chime, pushPcm, restartMic, setBandPorts, setPlaybackIdleListener, startMic, stopPlayback } from './audio'
+import { chime, pushPcm, restartMic, setPlaybackIdleListener, startMic, stopPlayback } from './audio'
 import { watchAccent } from '../shared/accent'
 import './orb.css'
 
@@ -13,7 +13,6 @@ createRoot(document.getElementById('root') as HTMLElement).render(
 
 // 强调色跟设置走。贴图键不再写到 data-skin 上，否则玫瑰/海那两套颜色永远被盖住。
 watchAccent()
-window.api.onAudioHub((ports) => setBandPorts(ports as unknown as MessagePort[]))
 
 // 采集：麦克风 → 主进程（唤醒词 + 端点检测都在主进程）
 void startMic((chunk) => window.api.feedAudio(chunk))

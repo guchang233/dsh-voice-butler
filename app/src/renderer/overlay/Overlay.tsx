@@ -41,15 +41,9 @@ export default function Overlay(): JSX.Element {
       if (next !== 'off') setSince(payload?.since ?? Date.now())
       workerRef.current?.postMessage({ type: 'state', mode: next, fx: nextFx })
     })
-    const offAudio = window.api.onAudioHub((ports) => {
-      const port = ports[0]
-      if (!port) return
-      port.onmessage = (event) => {
-        const bands = event.data?.bands
-        if (!bands) return
-        workerRef.current?.postMessage({ type: 'bands', bands })
-      }
-      port.start()
+    const offAudio = window.api.onAudioBands((bands) => {
+      if (!bands || bands.length === 0) return
+      workerRef.current?.postMessage({ type: 'bands', bands })
     })
     const offSettings = window.api.onSettings((settings) => {
       setFx(settings.effect)

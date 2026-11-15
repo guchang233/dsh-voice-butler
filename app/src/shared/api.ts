@@ -41,8 +41,15 @@ export type ButlerApi = {
   setMicEnabled: (enabled: boolean) => void
   /** 按住说话：按下开始听，松开就结束这一句 */
   ptt: (down: boolean) => void
-  /** 球窗口采到的频段，经 MessagePort 推给面板和特效层 */
-  onAudioHub: (handler: (ports: AudioHubPort[]) => void) => Unsubscribe
+  /**
+   * 面板 / 特效层订阅球窗采到的频段。
+   *
+   * MessagePort 过不了 contextBridge（到渲染层会变成没有 start 的普通对象），
+   * 所以端口留在 preload，这里只递数组。
+   */
+  onAudioBands: (handler: (bands: number[]) => void) => Unsubscribe
+  /** 球窗把频段推给面板和特效层（同样由 preload 代发） */
+  postAudioBands: (bands: number[]) => void
   onSettings: (handler: (settings: PublicSettings) => void) => Unsubscribe
 
   /* 与 DSH 管家会话打交道 */

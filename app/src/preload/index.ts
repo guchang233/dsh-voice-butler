@@ -11,13 +11,39 @@ import {
   type VoiceState,
   type VoiceStatus,
 } from '../shared/ipc'
-import type { AudioHubPort, ButlerApi, PersonaRead, PersonaWrite, Unsubscribe } from '../shared/api'
+import type { ButlerApi, PersonaRead, PersonaWrite, Unsubscribe } from '../shared/api'
 
 function subscribe<T>(channel: string, handler: (payload: T) => void): Unsubscribe {
   const listener = (_event: IpcRendererEvent, payload: T): void => handler(payload)
   ipcRenderer.on(channel, listener)
   return () => ipcRenderer.off(channel, listener)
 }
+
+/** 主进程转来的 MessagePort 只能活在 preload：过 contextBridge 会退化成普通对象（没有 start）。 */
+/** 只用到这三个成员；node 侧的 tsconfig 里 MessagePort 是 worker_threads 的全局值，不好当类型用 */
+type HubPort = {
+  onmessage: ((event: MessageEvent) => void) | null
+  start: () => void
+  postMessage: (message: unknown) => void
+}
+const hubPorts: HubPort[] = []
+const bandHandlers = new Set<(bands: number[]) => void>()
+
+ipcRenderer.on('audio-hub', (event) => {
+  for (const port of (event.ports ?? []) as unknown as HubPort[]) {
+    try {
+      port.onmessage = (message: MessageEvent) => {
+        const bands = (message.data as { bands?: number[] } | undefined)?.bands
+        if (!Array.isArray(bands)) return
+        for (const handler of bandHandlers) handler(bands)
+      }
+      port.start()
+      hubPorts.push(port)
+    } catch {
+      /* 端口接不上就算了，频谱只是装饰 */
+    }
+  }
+})
 
 const api: ButlerApi = {
   getSettings: (): Promise<PublicSettings> => ipcRenderer.invoke(IPC.settingsGet),
@@ -33,10 +59,18 @@ const api: ButlerApi = {
   feedAudio: (chunk: Int16Array): void => ipcRenderer.send(IPC.audioFeed, chunk),
   setMicEnabled: (enabled: boolean): void => ipcRenderer.send(IPC.micEnabled, enabled),
   ptt: (down: boolean): void => ipcRenderer.send(IPC.voicePtt, down),
-  onAudioHub: (handler: (ports: AudioHubPort[]) => void): Unsubscribe => {
-    const listener = (event: IpcRendererEvent): void => handler(event.ports as unknown as AudioHubPort[])
-    ipcRenderer.on('audio-hub', listener)
-    return () => ipcRenderer.off('audio-hub', listener)
+  onAudioBands: (handler: (bands: number[]) => void): Unsubscribe => {
+    bandHandlers.add(handler)
+    return () => bandHandlers.delete(handler)
+  },
+  postAudioBands: (bands: number[]): void => {
+    for (const port of hubPorts) {
+      try {
+        port.postMessage({ bands })
+      } catch {
+        /* 对端关了 */
+      }
+    }
   },
   onSettings: (handler) => subscribe<PublicSettings>(IPC.settingsChanged, handler),
 

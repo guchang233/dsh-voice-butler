@@ -37,17 +37,11 @@ export default function StatusStrip({ text, sessionLabel, busy, onStop, onNewSes
       })
     }
     draw()
-    return window.api.onAudioHub((ports) => {
-      const port = ports[0]
-      if (!port) return
-      port.onmessage = (event) => {
-        const bands = event.data?.bands
-        if (!bands || bands.length === 0) return
-        bandsRef.current = bands.slice(0, 8)
-        while (bandsRef.current.length < 8) bandsRef.current.push(0)
-        draw()
-      }
-      port.start()
+    return window.api.onAudioBands((bands) => {
+      if (!bands || bands.length === 0) return
+      bandsRef.current = bands.slice(0, 8)
+      while (bandsRef.current.length < 8) bandsRef.current.push(0)
+      draw()
     })
   }, [])
 
