@@ -16,3 +16,7 @@ desktop.ini
 *.log
 .vscode/
 .idea/
+
+# 根目录随手截的图（不属于插件内容）
+/shot*.png
+/crop*.png
