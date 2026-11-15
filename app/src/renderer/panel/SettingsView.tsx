@@ -112,6 +112,36 @@ export default function SettingsView({
       {notice && <div className="toast ok">{notice}</div>}
 
       <section className="set-card">
+        <h2>对话</h2>
+        <label className="switch-row">
+          <span>
+            <span className="field-label">连续对话</span>
+            <span className="field-hint">
+              一轮说完直接接着听，不用再喊「{WAKE_WORD}」；说「没事了」结束，静默 15 秒也会退回。
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={continuous}
+            onChange={(event) => {
+              const next = event.target.checked
+              setContinuous(next)
+              void window.api.saveSettings({ continuous: next }).then(() => onRefresh())
+            }}
+          />
+        </label>
+        <label className="switch-row">
+          <span>
+            <span className="field-label">说话时允许用唤醒词打断</span>
+            <span className="field-hint">
+              播报中喊「大肥鱼」立刻住嘴转去听你说；不喊就不打断（不会因为声音变大自己停）。
+            </span>
+          </span>
+          <input type="checkbox" checked={bargeIn} onChange={(event) => setBargeIn(event.target.checked)} />
+        </label>
+      </section>
+
+      <section className="set-card">
         <h2>语音</h2>
         <label className="field">
           <span className="field-label">语音钥匙（只用于听写和朗读）</span>
@@ -142,32 +172,6 @@ export default function SettingsView({
             ))}
           </div>
         </div>
-        <label className="switch-row">
-          <span>
-            <span className="field-label">连续对话</span>
-            <span className="field-hint">
-              一轮说完直接接着听，不用再喊「{WAKE_WORD}」；说「没事了」结束，静默 15 秒也会退回。
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            checked={continuous}
-            onChange={(event) => {
-              const next = event.target.checked
-              setContinuous(next)
-              void window.api.saveSettings({ continuous: next }).then(() => onRefresh())
-            }}
-          />
-        </label>
-        <label className="switch-row">
-          <span>
-            <span className="field-label">说话时允许用唤醒词打断</span>
-            <span className="field-hint">
-              播报中喊「大肥鱼」立刻住嘴转去听你说；不喊就不打断（不会因为声音变大自己停）。
-            </span>
-          </span>
-          <input type="checkbox" checked={bargeIn} onChange={(event) => setBargeIn(event.target.checked)} />
-        </label>
         <label className="field">
           <span className="field-label">语音接口地址</span>
           <input
