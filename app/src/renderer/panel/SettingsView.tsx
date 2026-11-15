@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
-import { BALL_LEVELS, WAKE_WORD, type Accent, type BallLevel, type PublicSettings, type ThemeMode } from '../../shared/ipc'
+import {
+  BALL_LEVELS,
+  WAKE_WORD,
+  type Accent,
+  type BallLevel,
+  type EffectLevel,
+  type PublicSettings,
+  type ThemeMode
+} from '../../shared/ipc'
 import SkinGrid from './SkinGrid'
 
 type Tone = { kind: 'idle' | 'busy' | 'ok' | 'bad'; text: string }
@@ -33,6 +41,7 @@ export default function SettingsView({
   const [continuous, setContinuous] = useState(settings?.continuous ?? false)
   const [theme, setTheme] = useState<ThemeMode>(settings?.theme ?? 'system')
   const [accent, setAccent] = useState<Accent>(settings?.accent ?? 'none')
+  const [effect, setEffect] = useState<EffectLevel>(settings?.effect ?? 'vivid')
   const [ballLevel, setBallLevel] = useState<BallLevel>(settings?.ballLevel ?? 'top')
   const [persona, setPersona] = useState('')
   const [personaIsDefault, setPersonaIsDefault] = useState(true)
@@ -223,6 +232,31 @@ export default function SettingsView({
             ))}
           </div>
           <span className="field-hint">玫瑰和海是两套配色，跟贴图分开，不再互相盖住。</span>
+        </div>
+        <div className="field">
+          <span className="field-label">特效强度</span>
+          <div className="seg-group">
+            {(
+              [
+                ['off', '关'],
+                ['soft', '柔和'],
+                ['vivid', '炫酷']
+              ] as Array<[EffectLevel, string]>
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={effect === key ? 'seg-item is-on' : 'seg-item'}
+                onClick={() => {
+                  setEffect(key)
+                  void window.api.saveSettings({ effect: key }).then(() => onRefresh())
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="field-hint">默认是半分辨率的流光边框。关就完全不画；系统开了减弱动效时会换成细光条。</span>
         </div>
         <div className="field">
           <span className="field-label">悬浮球层级</span>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { SkinImage } from '../shared/SkinImage'
+import { subscribeBands } from './audio'
 
 type Press = { x: number; y: number; dragging: boolean }
 
@@ -10,6 +11,8 @@ export default function Orb(): JSX.Element {
     'idle' | 'listening' | 'thinking' | 'speaking' | 'confirming' | 'offline' | 'error' | 'muted'
   >('idle')
   const [level, setLevel] = useState(0)
+  const [ripple, setRipple] = useState(0)
+  const specRef = useRef<HTMLCanvasElement | null>(null)
   const pressRef = useRef<Press | null>(null)
   const pressTimer = useRef<number | null>(null)
 
@@ -50,13 +53,34 @@ export default function Orb(): JSX.Element {
     const offHover = window.api.onBallHover(setHover)
     const offState = window.api.onVoiceState((payload) => {
       setState(payload.state)
+      if (payload.state === 'listening') setRipple((value) => value + 1)
       if (payload.state !== 'listening') setLevel(0)
     })
     const offLevel = window.api.onMicLevel(setLevel)
+    const offBands = subscribeBands((bands) => {
+      const canvas = specRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      const size = canvas.width
+      ctx.clearRect(0, 0, size, size)
+      const cx = size / 2
+      const cy = size / 2
+      ctx.strokeStyle = 'rgba(126, 168, 255, 0.85)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      for (let i = 0; i < bands.length; i++) {
+        const a0 = (i / bands.length) * Math.PI * 2 - Math.PI / 2
+        const a1 = ((i + 0.72) / bands.length) * Math.PI * 2 - Math.PI / 2
+        ctx.arc(cx, cy, 36 + bands[i] * 12, a0, a1)
+      }
+      ctx.stroke()
+    })
     return () => {
       offHover()
       offState()
       offLevel()
+      offBands()
     }
   }, [])
 
@@ -103,6 +127,8 @@ export default function Orb(): JSX.Element {
           style={state === 'listening' ? { transform: `scale(${scale})` } : undefined}
         >
           <span className="orb-ring" />
+          <canvas ref={specRef} className="orb-spec" width={96} height={96} aria-hidden="true" />
+          {ripple > 0 && <span key={ripple} className="wake-ripple" />}
           <SkinImage className="orb-char" />
         </div>
       </div>

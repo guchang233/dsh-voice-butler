@@ -1,0 +1,86 @@
+/* 没有 WebGL2、或系统要求减弱动效时的降级：只用 transform 和 opacity */
+
+.css-aurora {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  --fx: rgb(58, 245, 166);
+}
+
+.css-aurora .edge {
+  position: absolute;
+  background: var(--fx);
+  opacity: 0.8;
+}
+
+.css-aurora .edge.top,
+.css-aurora .edge.bottom {
+  left: 0;
+  right: 0;
+  height: 8px;
+  transform-origin: center top;
+  animation: edgePulse 2.6s ease-in-out infinite;
+}
+
+.css-aurora .edge.bottom {
+  bottom: 0;
+  top: auto;
+  transform-origin: center bottom;
+}
+
+.css-aurora .edge.left,
+.css-aurora .edge.right {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  transform-origin: left center;
+  animation: edgePulseX 2.6s ease-in-out infinite;
+}
+
+.css-aurora .edge.right {
+  right: 0;
+  left: auto;
+  transform-origin: right center;
+}
+
+.css-aurora .ripple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28vmin;
+  height: 28vmin;
+  margin: -14vmin 0 0 -14vmin;
+  border: 2px solid var(--fx);
+  border-radius: 50%;
+  opacity: 0;
+  animation: rippleOut 0.9s ease-out;
+}
+
+.css-aurora.is-off {
+  display: none;
+}
+
+@keyframes edgePulse {
+  50% {
+    opacity: 0.28;
+    transform: scaleY(1.6);
+  }
+}
+
+@keyframes edgePulseX {
+  50% {
+    opacity: 0.28;
+    transform: scaleX(1.6);
+  }
+}
+
+@keyframes rippleOut {
+  from {
+    transform: scale(0.35);
+    opacity: 0.85;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}

@@ -6,6 +6,7 @@ import { importCustomSkin, listCustomSkins, removeCustomSkin, renameCustomSkin }
 import { logError, logInfo } from './log'
 import { buildPeekData } from './peek'
 import { saveApiKey, savePreferences, getSettings } from './store'
+import { syncOverlay } from './overlay'
 import { getVoice } from './voice'
 import {
   broadcastSkin,
@@ -32,6 +33,7 @@ const settingsPatch = z.object({
   dshOrigin: z.string().max(300).optional(),
   theme: z.enum(['system', 'light', 'dark']).optional(),
   accent: z.enum(['none', 'rose', 'ocean']).optional(),
+  effect: z.enum(['off', 'soft', 'vivid']).optional(),
   continuous: z.boolean().optional(),
   ballLevel: z.enum(['top', 'float', 'normal']).optional()
 })
@@ -112,6 +114,7 @@ export function registerIpc(): void {
       dshOrigin: patch.dshOrigin,
       theme: patch.theme,
       accent: patch.accent,
+      effect: patch.effect,
       continuous: patch.continuous,
       ballLevel: patch.ballLevel
     })
@@ -123,6 +126,7 @@ export function registerIpc(): void {
       logInfo('layers', 'ball level = ' + patch.ballLevel)
     }
     publishSettings()
+    syncOverlay()
     return { ok: true as const }
   })
 

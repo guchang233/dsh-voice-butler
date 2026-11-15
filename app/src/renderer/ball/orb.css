@@ -120,6 +120,34 @@ body,
   }
 }
 
+.orb-spec {
+  position: absolute;
+  inset: 4px;
+  width: 96px;
+  height: 96px;
+  pointer-events: none;
+}
+
+.wake-ripple {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgb(58, 245, 166);
+  pointer-events: none;
+  animation: wakeRipple 0.9s ease-out forwards;
+}
+
+@keyframes wakeRipple {
+  from {
+    transform: scale(0.86);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
 .orb-char {
   width: 100%;
   height: 100%;

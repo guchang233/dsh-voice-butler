@@ -19,6 +19,9 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 /** 强调色。纸/墨仍由主题决定；rose / ocean 是原来写在 data-skin 上、从没生效的两套 */
 export type Accent = 'none' | 'rose' | 'ocean'
 
+/** 顶层特效强度 */
+export type EffectLevel = 'off' | 'soft' | 'vivid'
+
 export const WAKE_WORD = '大肥鱼'
 
 export const IPC = {
@@ -134,6 +137,7 @@ export type OverlayPayload = {
   tools: number
   mouse: number
   since: number
+  fx: EffectLevel
 }
 
 /** 悬浮球的窗口层级 */
@@ -155,6 +159,8 @@ export type PublicSettings = {
   theme: ThemeMode
   /** 强调色：默认 / 玫瑰 / 海 */
   accent: Accent
+  /** 顶层特效：关 / 柔和 / 炫酷 */
+  effect: EffectLevel
   /** 连续对话：一轮说完直接接着听，不用再喊唤醒词 */
   continuous: boolean
   /** 悬浮球的窗口层级 */
@@ -182,6 +188,7 @@ export type SettingsPatch = {
   dshOrigin?: string
   theme?: ThemeMode
   accent?: Accent
+  effect?: EffectLevel
   continuous?: boolean
   ballLevel?: BallLevel
 }
