@@ -1,10 +1,11 @@
+import workletUrl from './mic-processor.js?url'
+
 /** 球窗口里的音频：麦克风采集（16 kHz PCM 分片上行）+ TTS PCM 排程播放 + 唤醒提示音 */
 
-const TARGET_RATE = 16000
 const PLAY_RATE = 24000
 
 let micCtx: AudioContext | null = null
-let micNode: ScriptProcessorNode | null = null
+let micNode: AudioWorkletNode | null = null
 let micStream: MediaStream | null = null
 let micGain: GainNode | null = null
 /** 上一次真正收到麦克风回调的时刻：太久没有 = 采集管线死了，得重开 */
@@ -179,31 +180,6 @@ export function chime(kind: 'wake' | 'error' = 'wake'): void {
 
 /* ------------------------------------------------------------------ 采集 */
 
-function downsample(input: Float32Array, from: number, to: number): Float32Array {
-  if (from === to) return input
-  const ratio = from / to
-  const length = Math.floor(input.length / ratio)
-  const out = new Float32Array(length)
-  for (let i = 0; i < length; i++) {
-    const pos = i * ratio
-    const base = Math.floor(pos)
-    const frac = pos - base
-    const a = input[base] ?? 0
-    const b = input[base + 1] ?? a
-    out[i] = a + (b - a) * frac
-  }
-  return out
-}
-
-function toInt16(samples: Float32Array): Int16Array {
-  const out = new Int16Array(samples.length)
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]))
-    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff
-  }
-  return out
-}
-
 export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<boolean> {
   micChunkSink = onChunk
   if (micNode) return true
@@ -217,28 +193,15 @@ export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<bo
       }
     })
     micCtx = new AudioContext()
-    const rate = micCtx.sampleRate
+    await micCtx.audioWorklet.addModule(workletUrl)
     const source = micCtx.createMediaStreamSource(micStream)
-    micNode = micCtx.createScriptProcessor(2048, 1, 1)
+    micNode = new AudioWorkletNode(micCtx, 'mic-processor')
     micGain = micCtx.createGain()
-    micGain.gain.value = 0 // 不把麦克风回放到扬声器，接个静音节点只为让 ScriptProcessor 持续回调
-
-    let pending: Float32Array = new Float32Array(0)
-    micNode.onaudioprocess = (event) => {
+    micGain.gain.value = 0
+    micNode.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
       micLastAt = Date.now()
-      const input = event.inputBuffer.getChannelData(0)
-      const resampled = downsample(input, rate, TARGET_RATE)
-      const merged = new Float32Array(pending.length + resampled.length)
-      merged.set(pending)
-      merged.set(resampled, pending.length)
-
-      const usable = Math.floor(merged.length / 1600) * 1600
-      if (usable === 0) {
-        pending = merged
-        return
-      }
-      pending = merged.slice(usable)
-      micChunkSink?.(toInt16(merged.subarray(0, usable)))
+      const pcm = new Int16Array(event.data)
+      if (pcm.length) micChunkSink?.(pcm)
     }
 
     source.connect(micNode)

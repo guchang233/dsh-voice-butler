@@ -98,6 +98,12 @@ function push(): void {
     since: modeSince
   })
 
+  try {
+    win.webContents.setBackgroundThrottling(mode === 'off')
+  } catch {
+    /* 窗口正在关 */
+  }
+
   if (hideTimer) {
     clearTimeout(hideTimer)
     hideTimer = null

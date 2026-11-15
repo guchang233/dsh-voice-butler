@@ -1,6 +1,8 @@
-import { app, globalShortcut, Menu, nativeImage, nativeTheme, session, Tray } from 'electron'
+import { app, globalShortcut, Menu, nativeImage, nativeTheme, net, protocol, session, Tray } from 'electron'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { resolveCustomSkinFile } from './customSkins'
 import { getBridge } from './bridge'
 import { registerIpc } from './ipc'
 import { installCrashLogging, logError, logInfo } from './log'
@@ -48,6 +50,19 @@ function readOverlayModeHint(): string {
     return ''
   }
 }
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'butler-skin',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true
+    }
+  }
+])
 
 installCrashLogging()
 // 透明窗口在部分 Windows 驱动上会因遮挡判定而停画
@@ -188,8 +203,17 @@ function wireBridge(): void {
   })
 }
 
+function registerSkinProtocol(): void {
+  protocol.handle('butler-skin', (request) => {
+    const file = resolveCustomSkinFile(request.url)
+    if (!file) return new Response('missing', { status: 404 })
+    return net.fetch(pathToFileURL(file).href)
+  })
+}
+
 async function bootstrap(): Promise<void> {
   await app.whenReady()
+  registerSkinProtocol()
   logInfo('ready')
 
   // 麦克风权限：本机桌面应用，直接放行采集（不弹 Chromium 的授权条）

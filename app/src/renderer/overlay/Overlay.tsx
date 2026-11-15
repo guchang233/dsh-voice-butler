@@ -93,6 +93,7 @@ export default function Overlay(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const modeRef = useRef<Mode>('off')
   const sinceRef = useRef(0)
+  const kickRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     const off = window.api.onOverlay((payload: Payload) => {
@@ -101,6 +102,7 @@ export default function Overlay(): JSX.Element {
         modeRef.current = next
         sinceRef.current = payload?.since ?? Date.now()
       }
+      kickRef.current?.()
     })
     return off
   }, [])
@@ -148,17 +150,19 @@ export default function Overlay(): JSX.Element {
     const start = performance.now()
     let alpha = 0
     let power = 0
+    let looping = false
     const color: [number, number, number] = [58, 245, 166]
 
     const draw = (now: number): void => {
-      raf = requestAnimationFrame(draw)
       const T = (now - start) / 1000
       const mode = modeRef.current
       const look = mode === 'off' ? null : LOOKS[mode]
 
       alpha += ((look ? 1 : 0) - alpha) * (look ? 0.15 : 0.06)
-      if (alpha < 0.004) {
+      if (!look && alpha < 0.004) {
         ctx.clearRect(0, 0, width, height)
+        looping = false
+        raf = 0
         return
       }
 
@@ -383,10 +387,19 @@ export default function Overlay(): JSX.Element {
       ctx.fillRect(0, scanY - 70, width, 140)
 
       ctx.restore()
+      raf = requestAnimationFrame(draw)
     }
 
-    raf = requestAnimationFrame(draw)
+    const kick = (): void => {
+      if (looping) return
+      looping = true
+      raf = requestAnimationFrame(draw)
+    }
+    kickRef.current = kick
+    kick()
     return () => {
+      looping = false
+      kickRef.current = null
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
     }

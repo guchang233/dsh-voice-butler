@@ -107,8 +107,10 @@ export async function runWakeWordSelfTest(): Promise<void> {
         const result = bargeWatcher.feed(chunk)
         if (result) bargeHit = result
       }
-      if (hit && (bargeHit || !bargeWatcher)) break
     }
+    // 推理在子进程里：这一段塞完之后还要等回执，命中不会在 feed() 当次返回
+    if (!hit) hit = await watcher.whenCaughtUp(5000)
+    if (bargeWatcher && !bargeHit) bargeHit = await bargeWatcher.whenCaughtUp(5000)
     logInfo(
       'selftest',
       `唤醒词自测：${padded.length} 样本 → 待机引擎 ${hit ? '命中 ' + hit : '未命中'}；` +
