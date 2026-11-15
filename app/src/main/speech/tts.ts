@@ -49,36 +49,40 @@ export class TtsQueue {
     const { baseUrl, apiKey, voice } = this.getConfig()
     if (!apiKey) return
     this.onLevel?.(true)
+    try {
+      const timeout = AbortSignal.timeout(30_000)
+      const signal = AbortSignal.any([this.controller.signal, timeout])
+      const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/tools/tts`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text, voice_id: voice, format: 'pcm', filter_markdown: true }),
+        signal
+      })
 
-    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/tools/tts`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ text, voice_id: voice, format: 'pcm', filter_markdown: true }),
-      signal: this.controller.signal
-    })
-
-    if (!res.ok || !res.body) {
-      // 400 表示这句念不出来：跳过它继续下一句，但要留痕（不然听起来就是「话说一半没了」）
-      if (res.status === 400) {
-        this.onError(new Error('这句念不出来，已跳过：' + text.slice(0, 24)))
-        return
+      if (!res.ok || !res.body) {
+        // 400 表示这句念不出来：跳过它继续下一句，但要留痕（不然听起来就是「话说一半没了」）
+        if (res.status === 400) {
+          this.onError(new Error('这句念不出来，已跳过：' + text.slice(0, 24)))
+          return
+        }
+        throw new Error(`语音合成失败（HTTP ${res.status}）`)
       }
-      throw new Error(`语音合成失败（HTTP ${res.status}）`)
-    }
 
-    const reader = res.body.getReader()
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (value && value.length) {
-        this.bytesTotal += value.length
-        this.sink(value)
+      const reader = res.body.getReader()
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value && value.length) {
+          this.bytesTotal += value.length
+          this.sink(value)
+        }
       }
+    } finally {
+      this.onLevel?.(false)
     }
-    this.onLevel?.(false)
   }
 }
 

@@ -71,7 +71,8 @@ export async function runWakeWordSelfTest(): Promise<void> {
         voice_id: 'stella',
         format: 'pcm',
         filter_markdown: true
-      })
+      }),
+      signal: AbortSignal.timeout(30_000)
     })
     if (!res.ok) {
       logError('selftest', 'TTS 失败 HTTP ' + res.status)
@@ -137,7 +138,8 @@ export async function runWakeWordSelfTest(): Promise<void> {
       const asrRes = await fetch(`${settings.baseUrl.replace(/\/+$/, '')}/v1/tools/asr`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}` },
-        body: form
+        body: form,
+        signal: AbortSignal.timeout(45_000)
       })
       if (asrRes.ok) {
         const body = (await asrRes.json()) as { text?: string }

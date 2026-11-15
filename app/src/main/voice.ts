@@ -7,6 +7,12 @@ import { transcribe } from './speech/asr'
 import { SentenceChunker, TtsQueue, TTS_SAMPLE_RATE } from './speech/tts'
 import { getApiKey, getSettings } from './store'
 import { getBall, getPanel, showPanel } from './windows'
+import {
+  approvalPrompt,
+  decideVoiceApproval,
+  isDangerousApproval,
+  tooCloseToPrompt
+} from '../shared/confirm'
 import { IPC, type LinkState, type VoiceFrame, type VoiceState } from '../shared/ipc'
 
 /**
@@ -24,9 +30,6 @@ const MIN_UTTERANCE_MS = 350
 const MAX_UTTERANCE_MS = 15_000
 /** 连续对话里，静默这么久没人说话就退回去等唤醒词 */
 const CONTINUOUS_IDLE_MS = 15_000
-
-const YES = /(可以|行|好|嗯|对|是|确认|同意|继续|放行|ok|yes|okay|开吧|关吧|删吧)/i
-const NO = /(别|不|取消|算了|不要|停|等等|no)/i
 
 /** 「大肥鱼 / 大飞鱼」这类识别变体：打断时那句话开头常带着它 */
 const WAKE_LEAD = /^\s*(大\s*[肥飞鲱非菲]\s*鱼|大肥鱼|大飞鱼)[\s，,。.、！!？?~～…]*/i
@@ -84,6 +87,9 @@ export class Voice {
   private audioEndsAt = 0
 
   private runningTurn = false
+  /** 正在问的那句确认词，用来丢掉「把自己的问句听成回答」 */
+  private askedPrompt = ''
+  private playbackWaiters: Array<() => void> = []
 
   constructor() {
     this.tts = new TtsQueue(
@@ -471,23 +477,57 @@ export class Voice {
     if (link === 'online' && this.state === 'offline') this.setState('idle')
   }
 
-  /** DSH 弹确认时，先用嘴问一句，听到「可以」就放行；面板上也能点 */
+  /**
+   * DSH 弹确认时先把问句念完，再开麦。
+   * 问句不含肯定词；和问句太像的识别结果丢掉。
+   * 危险操作只能在面板上点允许，语音顶多拒绝。
+   */
   private async askApproval(frame: { id: string; tool: string; reason: string }): Promise<void> {
     const summary = frame.reason?.trim() || frame.tool
-    this.setState('confirming')
-    this.speak(`要${summary}，可以吗？`)
+    const prompt = approvalPrompt(summary)
+    this.askedPrompt = prompt
+    this.speak(prompt)
+    await this.waitUntilQuiet()
+    if (this.approval?.id !== frame.id) return
     const answer = await this.listenOnce(9000)
     if (this.approval?.id !== frame.id) return
     if (!answer) return
-    if (NO.test(answer) && !YES.test(answer)) {
+    if (tooCloseToPrompt(answer, prompt)) {
+      logInfo('voice', '丢弃和问句太像的识别：' + answer)
+      return
+    }
+    const dangerous = isDangerousApproval(frame.tool, frame.reason)
+    const decision = decideVoiceApproval(answer, dangerous)
+    logInfo('voice', `确认「${answer}」→ ${decision}（dangerous=${dangerous}）`)
+    if (decision === 'deny') {
       this.approval = null
       void getBridge().approve(frame.id, false).catch((error) => logError('approve', error))
       return
     }
-    if (YES.test(answer)) {
+    if (decision === 'allow') {
       this.approval = null
       void getBridge().approve(frame.id, true).catch((error) => logError('approve', error))
+      return
     }
+    if (decision === 'needs-click') {
+      this.speakNow('这个要在面板上点允许。')
+    }
+  }
+
+  /** 等这一轮真的念完再开麦，避免把问句自己收进去 */
+  private waitUntilQuiet(timeoutMs = 20_000): Promise<void> {
+    if (this.playbackIdle) return Promise.resolve()
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.playbackWaiters = this.playbackWaiters.filter((fn) => fn !== done)
+        resolve()
+      }, timeoutMs)
+      const done = (): void => {
+        clearTimeout(timer)
+        resolve()
+      }
+      this.playbackWaiters.push(done)
+    })
   }
 
   /* -------------------------------------------------------------- 出声 */
@@ -545,6 +585,9 @@ export class Voice {
     }
     if (this.playbackIdle) return
     this.playbackIdle = true
+    const waiters = this.playbackWaiters
+    this.playbackWaiters = []
+    for (const fn of waiters) fn()
     logInfo('voice', 'playback drained')
     if (this.state === 'speaking') this.setState(this.link === 'offline' ? 'offline' : 'idle')
     this.scheduleContinue()

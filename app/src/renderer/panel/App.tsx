@@ -450,7 +450,7 @@ export default function App(): JSX.Element {
                     取消
                   </button>
                 </div>
-                <p className="confirm-hint">也可以直接说「可以」或「不要」</p>
+                <p className="confirm-hint">危险操作请在这里点允许；说「取消」可以拒绝。</p>
               </div>
             )}
 

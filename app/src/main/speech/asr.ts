@@ -8,7 +8,8 @@ export async function transcribe(baseUrl: string, apiKey: string, wav: Buffer): 
   const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/tools/asr`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
-    body: form
+    body: form,
+    signal: AbortSignal.timeout(45_000)
   })
 
   if (!res.ok) {

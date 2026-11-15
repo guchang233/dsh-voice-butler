@@ -48,7 +48,8 @@ function resolveSkinKey(key: string): string {
 /** 只校验语音接口能不能用（GET /models，不花钱），不涉及对话 */
 async function verifyKey(baseUrl: string, apiKey: string): Promise<void> {
   const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/models`, {
-    headers: { Authorization: `Bearer ${apiKey}` }
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(15_000)
   })
   if (res.ok) return
   const map: Record<number, string> = {

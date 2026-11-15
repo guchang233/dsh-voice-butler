@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { createFrameLog } from './frames.js'
 
 /**
  * butler-bridge —— 语音壳（Electron「管家」）与 DSH 管家会话之间的唯一通道。
@@ -101,7 +102,6 @@ function readPersona() {
   return DEFAULT_PERSONA
 }
 
-const MAX_FRAMES = 4000
 /** 面板多久没来取帧，就不再替它拦确认（还给 DSH 自己的界面） */
 const PANEL_STALE_MS = 25_000
 /** 确认卡片最多等多久，超时按取消处理，避免工具调用挂死 */
@@ -162,6 +162,19 @@ function readBody(req, limit = 128 * 1024) {
     })
     req.on('error', () => resolve({}))
   })
+}
+
+/**
+ * 回环 Host 只挡得住别的机器，挡不住本机任意进程。
+ * 写操作和取帧还要带 endpoint.json 里的 Bearer。
+ */
+function bearerOk(req, token) {
+  const header = String(req.headers.authorization ?? '')
+  const got = /^bearer\s+/i.test(header) ? header.replace(/^bearer\s+/i, '').trim() : ''
+  const a = Buffer.from(got)
+  const b = Buffer.from(token)
+  if (a.length === 0 || a.length !== b.length) return false
+  return timingSafeEqual(a, b)
 }
 
 /** 只认回环 Host：这道门后面是本机语音壳。 */
@@ -261,8 +274,9 @@ export function apply(ctx) {
   const state = readJsonFile(STATE_FILE, {})
   const controller = ctx.sessionController
 
-  let frames = []
-  let seq = 0
+  const frameLog = createFrameLog()
+  /** 本进程随机令牌，写进 endpoint.json，语音壳每次请求带上 */
+  const token = randomBytes(24).toString('hex')
   const waiters = new Set()
   let lastPanelPollAt = 0
   const pendingApprovals = new Map()
@@ -281,25 +295,8 @@ export function apply(ctx) {
   }
 
   function push(frame) {
-    seq += 1
-    frames.push({ seq, ...frame })
-    if (frames.length > MAX_FRAMES) frames.splice(0, frames.length - MAX_FRAMES)
+    frameLog.push(frame)
     wakePollers()
-  }
-
-  function drain(sinceSeq, budget = 260) {
-    const out = []
-    for (const frame of frames) {
-      if (frame.seq <= sinceSeq) continue
-      const last = out[out.length - 1]
-      if (last && last.t === 'delta' && frame.t === 'delta') {
-        last.text += frame.text
-        continue
-      }
-      out.push({ ...frame })
-      if (out.length >= budget) break
-    }
-    return out
   }
 
   function setPhase(next) {
@@ -328,7 +325,15 @@ export function apply(ctx) {
       setTimeout(() => {
         try {
           const late = ctx.webServer.getOrigin()
-          if (late) writeJsonFile(ENDPOINT_FILE, { origin: late, sessionId, preset: PRESET, updatedAt: Date.now() })
+          if (late) {
+            writeJsonFile(ENDPOINT_FILE, {
+              origin: late,
+              sessionId,
+              preset: PRESET,
+              token,
+              updatedAt: Date.now()
+            })
+          }
         } catch {
           /* 仍然没有就等下一次心跳 */
         }
@@ -338,6 +343,7 @@ export function apply(ctx) {
       origin,
       sessionId,
       preset: PRESET,
+      token,
       updatedAt: Date.now()
     })
   }
@@ -649,7 +655,8 @@ export function apply(ctx) {
       title: SESSION_TITLE,
       running,
       phase,
-      cursor: seq,
+      cursor: frameLog.seq,
+      epoch: frameLog.epoch,
       pending: [...pendingApprovals.keys()],
       /** 语音壳最近 25 秒有没有在取帧（等于壳开没开） */
       panelActive: Date.now() - lastPanelPollAt < PANEL_STALE_MS,
@@ -682,8 +689,12 @@ export function apply(ctx) {
     const p = url.pathname
     const method = req.method ?? 'GET'
 
+    if (p === `${ROUTE_PREFIX}/ping` && method === 'GET' && !bearerOk(req, token)) {
+      return sendJson(res, 200, { ok: true, service: 'butler-bridge', version: 3 })
+    }
+
     if (p === `${ROUTE_PREFIX}/ping`) {
-      return sendJson(res, 200, { ok: true, service: 'butler-bridge', version: 2, ...snapshot() })
+      return sendJson(res, 200, { ok: true, service: 'butler-bridge', version: 3, ...snapshot() })
     }
 
     if (p === `${ROUTE_PREFIX}/state`) {
@@ -707,6 +718,7 @@ export function apply(ctx) {
 
     if (p === `${ROUTE_PREFIX}/frames`) {
       const cursorRaw = Number(url.searchParams.get('cursor'))
+      const epochRaw = Number(url.searchParams.get('epoch'))
       const waitRaw = Number(url.searchParams.get('wait'))
       const wait = Number.isFinite(waitRaw)
         ? Math.max(0, Math.min(POLL_WAIT_MAX, waitRaw))
@@ -714,24 +726,27 @@ export function apply(ctx) {
       lastPanelPollAt = Date.now()
 
       const since = Number.isFinite(cursorRaw) && cursorRaw >= 0 ? cursorRaw : -1
-      const firstSeq = frames.length ? frames[0].seq : 0
+      const sinceEpoch = Number.isFinite(epochRaw) ? epochRaw : 0
 
-      // 壳刚起来（cursor<0），或者缓冲已经滚过它读到的位置：先给一段历史
-      if (since < 0 || (firstSeq > 0 && since < firstSeq - 1)) {
+      const deliver = async (drained) => {
         let history = []
-        if (sessionId) history = await readHistory(sessionId).catch(() => [])
+        if (drained.reset && sessionId) history = await readHistory(sessionId).catch(() => [])
         return sendJson(res, 200, {
           ok: true,
-          reset: true,
-          history,
-          cursor: seq,
-          frames: frames.map((frame) => ({ ...frame })),
-          ...snapshot()
+          ...snapshot(),
+          reset: drained.reset || since < 0,
+          history: drained.reset || since < 0 ? history : undefined,
+          epoch: drained.epoch,
+          cursor: drained.cursor,
+          frames: drained.frames,
+          truncated: drained.truncated
         })
       }
 
-      let batch = drain(since)
-      if (!batch.length && wait > 0) {
+      let drained = frameLog.drain(since, sinceEpoch, since < 0 ? 4000 : 260)
+      if (drained.reset || since < 0) return deliver(drained)
+
+      if (!drained.frames.length && wait > 0) {
         await new Promise((resolve) => {
           const done = () => {
             clearTimeout(timer)
@@ -744,8 +759,8 @@ export function apply(ctx) {
         // 逐字增量是一条一条来的；等 60ms 再收一次，把这段时间的 delta 并成一片
         await new Promise((resolve) => setTimeout(resolve, 60))
       }
-      batch = drain(since)
-      return sendJson(res, 200, { ok: true, cursor: seq, frames: batch, ...snapshot() })
+      drained = frameLog.drain(since, sinceEpoch)
+      return deliver(drained)
     }
 
     if (p === `${ROUTE_PREFIX}/persona`) {
@@ -820,11 +835,10 @@ export function apply(ctx) {
     if (p === `${ROUTE_PREFIX}/new`) {
       if (method !== 'POST') return sendJson(res, 405, { ok: false, error: 'POST only' })
       const id = await createSession()
-      frames = []
-      seq = 0
+      frameLog.reset()
       remember(id)
       push({ t: 'reset' })
-      return sendJson(res, 200, { ok: true, sessionId: id })
+      return sendJson(res, 200, { ok: true, sessionId: id, epoch: frameLog.epoch })
     }
 
     return sendJson(res, 404, { ok: false, error: 'unknown route ' + p })
@@ -838,6 +852,10 @@ export function apply(ctx) {
       handler: async (req, res) => {
         if (!trusted(req)) return sendJson(res, 403, { ok: false, error: 'loopback only' })
         const url = new URL(req.url ?? ROUTE_PREFIX, 'http://127.0.0.1')
+        const openPing = url.pathname === `${ROUTE_PREFIX}/ping` && (req.method ?? 'GET') === 'GET'
+        if (!openPing && !bearerOk(req, token)) {
+          return sendJson(res, 401, { ok: false, error: 'unauthorized' })
+        }
         try {
           await handle(req, res, url)
         } catch (error) {
