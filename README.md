@@ -44,6 +44,28 @@ dsh plugin --profile desktop add link:$PWD\dsh-sync
 装完**完全退出并重开 DSH 桌面端**（注入表与预设都在启动时收集一次）。
 重开后侧栏里会出现一条 **DSH语音管家** 会话，模式标着「管家模式」。
 
+### 已经装过、现在升级到「翻新」这版的
+
+`butler-bridge` 这版多了一个运行依赖（`zod`，用来校验接口入参）。已装好的插件不会自动补装，直接重启会看到：
+
+```
+butler-bridge: failed to import: Cannot find package 'zod'
+```
+
+补一次依赖就好（**不用**重新 add 插件）：
+
+```powershell
+cd butler-bridge; npm install
+```
+
+语音壳这版换了 Electron 45（`npm ci` 重新装、`npm run dist` 重新打包）：
+
+```powershell
+cd app; npm ci; npm run dist
+```
+
+安装包名字变成 `app/dist/Butler-0.1.0-x64.exe`，免安装目录里仍然是 `管家.exe`，守护脚本的路径没变。
+
 语音壳本身：
 
 ```powershell
