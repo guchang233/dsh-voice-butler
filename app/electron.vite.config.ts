@@ -26,6 +26,8 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react()],
     build: {
+      // 麦克风 AudioWorklet 必须是独立文件；内联成 data: 会被生产环境 CSP 拦住
+      assetsInlineLimit: 0,
       rollupOptions: {
         input: {
           ball: resolve(__dirname, 'src/renderer/ball/index.html'),

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { resolveCustomSkinFile } from './customSkins'
 import { getBridge } from './bridge'
+import { contentSecurityPolicy, isLocalContents } from './harden'
 import { registerIpc } from './ipc'
 import { installCrashLogging, logError, logInfo } from './log'
 import { runWakeWordSelfTest } from './audio/selftest'
@@ -216,11 +217,21 @@ async function bootstrap(): Promise<void> {
   registerSkinProtocol()
   logInfo('ready')
 
-  // 麦克风权限：本机桌面应用，直接放行采集（不弹 Chromium 的授权条）
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(permission === 'media' || permission === ('audioCapture' as typeof permission))
+  // 只有本应用页面能要麦克风；别的权限一律不给
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => {
+    callback(permission === 'media' && isLocalContents(wc))
   })
-  session.defaultSession.setPermissionCheckHandler(() => true)
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => {
+    return permission === 'media' && isLocalContents(wc ?? null)
+  })
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = {
+      ...details.responseHeaders,
+      'Content-Security-Policy': [contentSecurityPolicy()]
+    }
+    callback({ responseHeaders })
+  })
 
   const settings = getSettings()
   logInfo('settings', JSON.stringify({ ...settings, hasKey: settings.hasKey }))

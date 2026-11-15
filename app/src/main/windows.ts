@@ -1,6 +1,7 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
 import { IPC, type BallLevel } from '../shared/ipc'
+import { hardenWindow } from './harden'
 import { logError, logInfo } from './log'
 import { saveBallPosition } from './store'
 
@@ -25,6 +26,7 @@ function loadPage(win: BrowserWindow, page: 'ball' | 'panel' | 'overlay' | 'peek
     // 只留真正的报错，别把 Electron 每次启动的 CSP 提示写进日志
     if (level >= 3) logError(`console[${page}]`, message)
   })
+  hardenWindow(win)
   const base = process.env['ELECTRON_RENDERER_URL']
   if (base) {
     void win.loadURL(`${base}/${page}/index.html`)
@@ -61,7 +63,7 @@ export function createBall(saved: { x: number; y: number } | null): BrowserWindo
     backgroundColor: '#00000000',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false
@@ -339,7 +341,7 @@ export function createPanel(): BrowserWindow {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false
@@ -396,7 +398,7 @@ export function createPeek(): BrowserWindow {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false
@@ -533,7 +535,7 @@ export function createOverlay(): BrowserWindow {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: preloadPath(),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       // 特效关着的时候允许节流；亮起来时由 overlay.ts 再关掉
