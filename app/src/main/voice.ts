@@ -749,6 +749,23 @@ export class Voice {
     this.triggerWake('按钮')
   }
 
+  /** 按住说话：按下就听，松开就把这一句送去识别。不念唤醒提示音。 */
+  pushToTalk(down: boolean): void {
+    if (!this.micEnabled) return
+    if (down) {
+      this.cancelContinue()
+      if (this.state === 'speaking' || this.state === 'thinking') this.mutePlayback()
+      this.beginListening()
+      showPanel()
+      logInfo('voice', 'ptt down')
+      return
+    }
+    if (this.state === 'listening' && !this.capture) {
+      logInfo('voice', 'ptt up')
+      void this.finishUtterance('ptt')
+    }
+  }
+
   stopPlaybackOnly(): void {
     this.mutePlayback()
   }

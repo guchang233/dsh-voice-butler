@@ -10,6 +10,10 @@ import { getVoice } from './voice'
 import {
   broadcastSkin,
   endDrag,
+  getBall,
+  getOverlay,
+  getPanel,
+  getPeek,
   hidePanel,
   applyBallLevel,
   hidePeek,
@@ -27,6 +31,7 @@ const settingsPatch = z.object({
   bargeIn: z.boolean().optional(),
   dshOrigin: z.string().max(300).optional(),
   theme: z.enum(['system', 'light', 'dark']).optional(),
+  accent: z.enum(['none', 'rose', 'ocean']).optional(),
   continuous: z.boolean().optional(),
   ballLevel: z.enum(['top', 'float', 'normal']).optional()
 })
@@ -58,6 +63,18 @@ async function verifyKey(baseUrl: string, apiKey: string): Promise<void> {
     429: '请求过于频繁（429）'
   }
   throw new Error(map[res.status] ?? `校验失败（HTTP ${res.status}）`)
+}
+
+function publishSettings(): void {
+  const bridge = getBridge().status()
+  const payload = {
+    ...getSettings(),
+    sessionId: bridge.sessionId,
+    sessionTitle: 'DSH语音管家'
+  }
+  for (const win of [getBall(), getPanel(), getPeek(), getOverlay()]) {
+    if (win && !win.isDestroyed()) win.webContents.send(IPC.settingsChanged, payload)
+  }
 }
 
 export function registerIpc(): void {
@@ -94,6 +111,7 @@ export function registerIpc(): void {
       bargeIn: patch.bargeIn,
       dshOrigin: patch.dshOrigin,
       theme: patch.theme,
+      accent: patch.accent,
       continuous: patch.continuous,
       ballLevel: patch.ballLevel
     })
@@ -104,6 +122,7 @@ export function registerIpc(): void {
       applyBallLevel(patch.ballLevel)
       logInfo('layers', 'ball level = ' + patch.ballLevel)
     }
+    publishSettings()
     return { ok: true as const }
   })
 
@@ -178,6 +197,10 @@ export function registerIpc(): void {
 
   ipcMain.on(IPC.micEnabled, (_event, enabled: unknown) => {
     getVoice().setMicEnabled(enabled === true)
+  })
+
+  ipcMain.on(IPC.voicePtt, (_event, down: unknown) => {
+    getVoice().pushToTalk(down === true)
   })
 
   /** 球窗报告：最后一段音频播完了（连续对话等这个信号才开麦） */

@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, MessageChannelMain, screen } from 'electron'
 import { join } from 'node:path'
 import { IPC, type BallLevel } from '../shared/ipc'
 import { hardenWindow } from './harden'
@@ -27,6 +27,9 @@ function loadPage(win: BrowserWindow, page: 'ball' | 'panel' | 'overlay' | 'peek
     if (level >= 3) logError(`console[${page}]`, message)
   })
   hardenWindow(win)
+  if (page === 'ball' || page === 'panel' || page === 'overlay') {
+    win.webContents.on('did-finish-load', () => scheduleAudioWire())
+  }
   const base = process.env['ELECTRON_RENDERER_URL']
   if (base) {
     void win.loadURL(`${base}/${page}/index.html`)
@@ -481,6 +484,29 @@ let overlayWin: BrowserWindow | null = null
 
 export function getOverlay(): BrowserWindow | null {
   return overlayWin
+}
+
+/** 球窗口采频段，用两条 MessagePort 直接推给特效层和面板，不走主进程中转 */
+let audioWireTimer: NodeJS.Timeout | null = null
+
+export function scheduleAudioWire(): void {
+  if (audioWireTimer) clearTimeout(audioWireTimer)
+  audioWireTimer = setTimeout(() => {
+    audioWireTimer = null
+    const toOverlay = new MessageChannelMain()
+    const toPanel = new MessageChannelMain()
+    const post = (win: BrowserWindow | null, ports: Electron.MessagePortMain[]): void => {
+      if (!win || win.isDestroyed()) return
+      try {
+        win.webContents.postMessage('audio-hub', null, ports)
+      } catch (error) {
+        logError('audio-hub', error)
+      }
+    }
+    post(ball, [toOverlay.port1, toPanel.port1])
+    post(overlayWin, [toOverlay.port2])
+    post(panel, [toPanel.port2])
+  }, 40)
 }
 
 /**

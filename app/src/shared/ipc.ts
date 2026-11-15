@@ -16,6 +16,9 @@ export const SKINS: Array<{ key: SkinKey; label: string }> = [
 /** 界面主题：跟随系统 / 纸（亮） / 墨（暗） */
 export type ThemeMode = 'system' | 'light' | 'dark'
 
+/** 强调色。纸/墨仍由主题决定；rose / ocean 是原来写在 data-skin 上、从没生效的两套 */
+export type Accent = 'none' | 'rose' | 'ocean'
+
 export const WAKE_WORD = '大肥鱼'
 
 export const IPC = {
@@ -59,6 +62,8 @@ export const IPC = {
   personaGet: 'persona:get',
   personaSave: 'persona:save',
   personaReset: 'persona:reset',
+  settingsChanged: 'settings:changed',
+  voicePtt: 'voice:ptt',
 
   /* 右键小卡片：时段 + 余额 */
   peekShow: 'peek:show',
@@ -148,6 +153,8 @@ export type PublicSettings = {
   skin: SkinKey
   /** 界面主题（面板 / 悬浮球 / 顶层特效一起换） */
   theme: ThemeMode
+  /** 强调色：默认 / 玫瑰 / 海 */
+  accent: Accent
   /** 连续对话：一轮说完直接接着听，不用再喊唤醒词 */
   continuous: boolean
   /** 悬浮球的窗口层级 */
@@ -174,6 +181,7 @@ export type SettingsPatch = {
   bargeIn?: boolean
   dshOrigin?: string
   theme?: ThemeMode
+  accent?: Accent
   continuous?: boolean
   ballLevel?: BallLevel
 }

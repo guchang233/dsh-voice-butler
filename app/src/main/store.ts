@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { WAKE_WORD, type BallLevel, type SkinKey, type ThemeMode } from '../shared/ipc'
+import { WAKE_WORD, type Accent, type BallLevel, type SkinKey, type ThemeMode } from '../shared/ipc'
 
 /**
  * 落盘结构。
@@ -26,6 +26,8 @@ type Stored = {
   skin?: string
   /** 界面主题 */
   theme?: ThemeMode
+  /** 强调色 */
+  accent?: Accent
   /** 悬浮球层级：最上层 / 普通置顶 / 不置顶 */
   ballLevel?: BallLevel
   /** 手动指定的 DSH 地址；留空则读 endpoint.json */
@@ -41,6 +43,7 @@ const DEFAULTS: Stored = {
   continuous: false,
   skin: 'whale',
   theme: 'system',
+  accent: 'none',
   ballLevel: 'top'
 }
 
@@ -57,6 +60,10 @@ function normalizeSkin(value: unknown): SkinKey {
 
 function normalizeTheme(value: unknown): ThemeMode {
   return value === 'light' || value === 'dark' ? value : 'system'
+}
+
+function normalizeAccent(value: unknown): Accent {
+  return value === 'rose' || value === 'ocean' ? value : 'none'
 }
 
 function normalizeBallLevel(value: unknown): BallLevel {
@@ -92,6 +99,7 @@ function read(): Stored {
       continuous: parsed.continuous === true,
       skin: normalizeSkin(parsed.skin),
       theme: normalizeTheme(parsed.theme),
+      accent: normalizeAccent(parsed.accent),
       ballLevel: normalizeBallLevel(parsed.ballLevel),
       dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined
     }
@@ -122,6 +130,7 @@ export type PublicLike = {
   continuous: boolean
   skin: SkinKey
   theme: ThemeMode
+  accent: Accent
   ballLevel: BallLevel
   dshOrigin: string
 }
@@ -139,6 +148,7 @@ export function getSettings(): PublicLike {
     continuous: s.continuous === true,
     skin: normalizeSkin(s.skin),
     theme: normalizeTheme(s.theme),
+    accent: normalizeAccent(s.accent),
     ballLevel: normalizeBallLevel(s.ballLevel),
     dshOrigin: s.dshOrigin ?? ''
   }
@@ -184,6 +194,7 @@ export function savePreferences(patch: {
   continuous?: boolean
   skin?: SkinKey
   theme?: ThemeMode
+  accent?: Accent
   ballLevel?: BallLevel
   dshOrigin?: string
 }): void {
@@ -198,6 +209,7 @@ export function savePreferences(patch: {
     continuous: patch.continuous ?? s.continuous === true,
     skin: normalizeSkin(patch.skin ?? s.skin),
     theme: normalizeTheme(patch.theme ?? s.theme),
+    accent: normalizeAccent(patch.accent ?? s.accent),
     ballLevel: normalizeBallLevel(patch.ballLevel ?? s.ballLevel),
     dshOrigin: patch.dshOrigin ?? s.dshOrigin
   })

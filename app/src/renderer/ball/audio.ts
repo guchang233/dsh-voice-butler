@@ -14,6 +14,63 @@ let micRestartTimer: ReturnType<typeof setTimeout> | null = null
 let micRestartCount = 0
 let micWatchdog: ReturnType<typeof setInterval> | null = null
 let micChunkSink: ((chunk: Int16Array) => void) | null = null
+let micAnalyser: AnalyserNode | null = null
+let playAnalyser: AnalyserNode | null = null
+const bandListeners = new Set<(bands: number[]) => void>()
+let bandPorts: MessagePort[] = []
+let bandTimer: ReturnType<typeof setInterval> | null = null
+
+/** 悬浮球自己画频谱用。面板和特效层走 MessagePort。 */
+export function subscribeBands(listener: (bands: number[]) => void): () => void {
+  bandListeners.add(listener)
+  return () => bandListeners.delete(listener)
+}
+
+export function setBandPorts(ports: MessagePort[]): void {
+  for (const port of bandPorts) {
+    try {
+      port.close()
+    } catch {
+      /* 已经关了 */
+    }
+  }
+  bandPorts = ports
+  for (const port of ports) port.start()
+  ensureBandTimer()
+}
+
+function readBands(analyser: AnalyserNode | null, into: number[]): void {
+  if (!analyser) return
+  const bins = new Uint8Array(analyser.frequencyBinCount)
+  analyser.getByteFrequencyData(bins)
+  const groups = into.length
+  const size = Math.max(1, Math.floor(bins.length / groups))
+  for (let i = 0; i < groups; i++) {
+    let sum = 0
+    for (let j = 0; j < size; j++) sum += bins[i * size + j] ?? 0
+    into[i] = Math.max(into[i], sum / size / 255)
+  }
+}
+
+function publishBands(): void {
+  const bands = [0, 0, 0, 0, 0, 0, 0, 0]
+  readBands(micAnalyser, bands)
+  readBands(playAnalyser, bands)
+  for (const listener of bandListeners) listener(bands)
+  const payload = { bands }
+  for (const port of bandPorts) {
+    try {
+      port.postMessage(payload)
+    } catch {
+      /* 对端关了 */
+    }
+  }
+}
+
+function ensureBandTimer(): void {
+  if (bandTimer) return
+  bandTimer = setInterval(publishBands, 34)
+}
 
 let playCtx: AudioContext | null = null
 let playCtxDefaultRate = false
@@ -113,9 +170,16 @@ export function pushPcm(buffer: ArrayBuffer): void {
   try {
     const audioBuffer = ctx.createBuffer(1, samples.length, PLAY_RATE)
     audioBuffer.copyToChannel(samples, 0)
+    if (!playAnalyser || playAnalyser.context !== ctx) {
+      playAnalyser = ctx.createAnalyser()
+      playAnalyser.fftSize = 256
+      playAnalyser.smoothingTimeConstant = 0.75
+      playAnalyser.connect(ctx.destination)
+      ensureBandTimer()
+    }
     const source = ctx.createBufferSource()
     source.buffer = audioBuffer
-    source.connect(ctx.destination)
+    source.connect(playAnalyser)
 
     const start = Math.max(ctx.currentTime + 0.02, nextTime)
     source.start(start)
@@ -152,6 +216,7 @@ export function stopPlayback(): void {
   }
   void playCtx.close()
   playCtx = null
+  playAnalyser = null
   nextTime = 0
   idleListener?.()
 }
@@ -195,6 +260,9 @@ export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<bo
     micCtx = new AudioContext()
     await micCtx.audioWorklet.addModule(workletUrl)
     const source = micCtx.createMediaStreamSource(micStream)
+    micAnalyser = micCtx.createAnalyser()
+    micAnalyser.fftSize = 256
+    micAnalyser.smoothingTimeConstant = 0.75
     micNode = new AudioWorkletNode(micCtx, 'mic-processor')
     micGain = micCtx.createGain()
     micGain.gain.value = 0
@@ -204,9 +272,11 @@ export async function startMic(onChunk: (chunk: Int16Array) => void): Promise<bo
       if (pcm.length) micChunkSink?.(pcm)
     }
 
-    source.connect(micNode)
+    source.connect(micAnalyser)
+    micAnalyser.connect(micNode)
     micNode.connect(micGain)
     micGain.connect(micCtx.destination)
+    ensureBandTimer()
     micLastAt = Date.now()
     micRestartCount = 0
 
@@ -254,10 +324,12 @@ function startMicWatchdog(): void {  if (micWatchdog) return
 
 export function stopMic(): void {
   micNode?.disconnect()
+  micAnalyser?.disconnect()
   micGain?.disconnect()
   micStream?.getTracks().forEach((track) => track.stop())
   void micCtx?.close()
   micNode = null
+  micAnalyser = null
   micGain = null
   micStream = null
   micCtx = null

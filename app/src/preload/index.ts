@@ -11,7 +11,7 @@ import {
   type VoiceState,
   type VoiceStatus
 } from '../shared/ipc'
-import type { ButlerApi, PersonaRead, PersonaWrite, Unsubscribe } from '../shared/api'
+import type { AudioHubPort, ButlerApi, PersonaRead, PersonaWrite, Unsubscribe } from '../shared/api'
 
 function subscribe<T>(channel: string, handler: (payload: T) => void): Unsubscribe {
   const listener = (_event: IpcRendererEvent, payload: T): void => handler(payload)
@@ -33,6 +33,13 @@ const api: ButlerApi = {
 
   feedAudio: (chunk: Int16Array): void => ipcRenderer.send(IPC.audioFeed, chunk),
   setMicEnabled: (enabled: boolean): void => ipcRenderer.send(IPC.micEnabled, enabled),
+  ptt: (down: boolean): void => ipcRenderer.send(IPC.voicePtt, down),
+  onAudioHub: (handler: (ports: AudioHubPort[]) => void): Unsubscribe => {
+    const listener = (event: IpcRendererEvent): void => handler(event.ports as unknown as AudioHubPort[])
+    ipcRenderer.on('audio-hub', listener)
+    return () => ipcRenderer.off('audio-hub', listener)
+  },
+  onSettings: (handler) => subscribe<PublicSettings>(IPC.settingsChanged, handler),
 
   say: (text: string): Promise<Result> => ipcRenderer.invoke(IPC.voiceSay, text),
   stop: (): Promise<Result> => ipcRenderer.invoke(IPC.voiceStop),
