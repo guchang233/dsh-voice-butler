@@ -33,6 +33,63 @@ const STATE_DIR = path.join(os.homedir(), '.dsh', 'butler-bridge')
 const STATE_FILE = path.join(STATE_DIR, 'state.json')
 const ENDPOINT_FILE = path.join(STATE_DIR, 'endpoint.json')
 const PERSONA_FILE = path.join(STATE_DIR, 'persona.md')
+const DEVICES_FILE = path.join(STATE_DIR, 'devices.md')
+
+/**
+ * 家里这台电脑能控制的设备。
+ *
+ * 和人格分开：人格是「你是谁」，这份是「你能碰哪些硬件、怎么碰」。
+ * 面板不改它，要改直接编辑 ~/.dsh/butler-bridge/devices.md（存在就以文件为准）。
+ */
+const DEFAULT_DEVICES = `# 这台电脑能控制的设备
+
+## 空调（米家 xiaomi.aircondition.mt7，局域网 192.168.2.4）
+
+别自己拼请求、也别去读设备凭证，用这一条（PowerShell）：
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 status
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 on
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 off
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 temp 26
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 mode cool
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 fan 3
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 swing on
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 eco on
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 sleep on
+    powershell -NoProfile -ExecutionPolicy Bypass -File D:\\mijia\\acctl.ps1 light off
+
+mode 也认中文：制冷 / 除湿 / 送风 / 制热；fan 也认 auto。
+
+它只输出一行 JSON：
+
+- \`status\` → {on, mode, mode_name, target_temp, fan, swing, eco, sleep, light, room_temp, humidity}
+- 改动 → {ok, changed, summary, before, after, warnings?}
+  \`summary\` 已经是一句可以直接念给主人听的话，\`warnings\` 是「机器没照做 / 顺带变了别的」。
+
+### 规矩
+
+1. 把 summary 翻成人话，别念 JSON、别念字段名。说完结果就停，不复述过程。
+2. 温度 16–31（步长 0.5）；风速 0–7 或 auto；模式只有 制冷(2) / 除湿(3) / 送风(4) / 制热(5)。
+   **说明书里没写的参数别猜**，宁可说「这个我控制不了」。
+3. 两次改动至少隔 3 秒，脚本自己会拒绝——被拒就如实说「刚调过，缓一下」，别重试刷屏。
+4. **绝对不要读、打印、贴出或外传 D:\\mijia\\ac.json**（里面是设备 token）。不要 cat 它。
+5. 这台机器有怪脾气：单独写 eco 出现过把温度一起拉到 25℃、写 eco off 出现过直接关机。
+   动 eco 前后都读一次状态，把**实际**变化告诉主人；warnings 不为空就照实念。
+6. room_temp 是室温，target_temp 是设定温度，两回事，别念混。
+7. fan 的 0 就是「自动风」，念作「自动」，不要说「0 档」；mode_name 已经给好中文（制冷/除湿/送风/制热）。
+8. 「空调多少度」= 室温 + 设定温度 + 模式；「开没开」= on。
+9. 报错里出现 timeout / 超时 / No route / 连不上，就说「空调没响应，可能不在同一个网里」，别反复试。
+`
+
+function readDevices() {
+  try {
+    const text = fs.readFileSync(DEVICES_FILE, 'utf8').trim()
+    if (text) return text
+  } catch {
+    /* 没文件就用默认 */
+  }
+  return DEFAULT_DEVICES
+}
 
 /**
  * 管家的人格。面板里可以改（写进 persona.md），改完下一次模型请求就生效。
@@ -605,12 +662,13 @@ export function apply(ctx) {
       const dispose = agent.ctx.on('system-prompt/assemble', async (assembly, _context, next) => {
         const result = await next()
         try {
+          const extra = []
+          const devices = readDevices()
+          if (devices) extra.push({ name: 'butler:devices', text: devices })
           const text = readPersona()
-          if (!text) return result
-          return {
-            ...result,
-            sections: [...result.sections, { name: 'butler:persona', text }]
-          }
+          if (text) extra.push({ name: 'butler:persona', text })
+          if (extra.length === 0) return result
+          return { ...result, sections: [...result.sections, ...extra] }
         } catch {
           return result
         }

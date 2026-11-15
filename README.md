@@ -64,6 +64,36 @@ npm run dist         # 打包 → dist\win-unpacked\管家.exe
 | 面板里的「新会话」 | 在 DSH 里换一条干净的管家会话 |
 | 托盘菜单 | 面板开关、叫醒、新会话、换肤、开机启动、退出 |
 
+### 让它管空调（米家 mt7）
+
+管家说话时喊「大肥鱼」，然后直接说「空调调到 26 度」「现在屋里多少度」就行。
+
+它背后调的是 `D:\mijia\acctl.ps1`（本地局域网直连，不走小米云）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\mijia\acctl.ps1 status
+powershell ... acctl.ps1 temp 26              # 16–31，步长 0.5
+powershell ... acctl.ps1 mode cool|dry|fan|heat
+powershell ... acctl.ps1 fan auto|1-7
+powershell ... acctl.ps1 on|off
+powershell ... acctl.ps1 swing|eco|sleep|light on|off
+```
+
+输出一行 JSON：`status` 给全量状态（含 `room_temp` 室温、`humidity` 湿度），
+改动给 `{ok, changed, summary, before, after, warnings}` —— `summary` 就是一句能直接念的话。
+
+**脚本里已经替你焊死的规矩**（不靠模型自觉）：
+
+| 规矩 | 怎么保证 |
+|---|---|
+| 改前读、改后读、报实际结果 | 一次调用里自动 before → set → 等 3 秒 → after，再拿实际值核对 |
+| 不越界、不瞎猜 | 温度 16–31 步长 0.5、风速 0–7/auto、模式 4 种，其他参数一律拒绝 |
+| 不高频轮询 | 两次**改动**至少隔 3 秒；读状态不限 |
+| 不碰 token | 只调 `ac.py`，从不读写 `ac.json`，输出里也不会出现它 |
+
+**能力说明放在提示词里**：桥会把一份「设备说明」挂在人格之前（`~/.dsh/butler-bridge/devices.md`，
+不存在就用内置那份），里面写了命令、取值范围、汇报口径，以及这台机器的怪脾气
+（单独写 `eco` 会把温度一起拉走、`eco off` 可能直接关机——所以动 eco 前后都要读状态照实说）。
 ### 悬浮球层级
 
 设置 → **悬浮球层级**（托盘菜单里也有同一个开关）：
