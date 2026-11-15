@@ -60,6 +60,11 @@ export const IPC = {
   personaSave: 'persona:save',
   personaReset: 'persona:reset',
 
+  /* 右键小卡片：时段 + 余额 */
+  peekShow: 'peek:show',
+  peekHide: 'peek:hide',
+  peekData: 'peek:data',
+
   /* 皮肤 */
   skinGet: 'skin:get',
   skinSet: 'skin:set',
@@ -151,6 +156,33 @@ export type VoiceStatus = {
   running: boolean
   origin: string
   lastError: string | null
+}
+
+/** DeepSeek 的峰谷时段（右键卡片用） */
+export type PeekPricing = {
+  peak: boolean
+  label: string
+  hint: string
+  nextLabel: string
+  nextAt: number
+  remainMs: number
+}
+
+export type PeekBalance =
+  | {
+      ok: true
+      currency: string
+      total: string
+      granted: string
+      toppedUp: string
+      available: boolean
+    }
+  | { ok: false; error: string }
+
+export type PeekData = {
+  at: number
+  pricing: PeekPricing
+  balance: PeekBalance
 }
 
 export type Result = { ok: true } | { ok: false; error: string }

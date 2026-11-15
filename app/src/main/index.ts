@@ -5,6 +5,7 @@ import { getBridge } from './bridge'
 import { registerIpc } from './ipc'
 import { installCrashLogging, logError, logInfo } from './log'
 import { runWakeWordSelfTest } from './audio/selftest'
+import { buildPeekData } from './peek'
 import { getSettings, savePreferences } from './store'
 import { getVoice } from './voice'
 import { SKINS, IPC } from '../shared/ipc'
@@ -18,6 +19,7 @@ import {
   hidePanel,
   markQuitting,
   showPanel,
+  showPeekWith,
   togglePanel
 } from './windows'
 
@@ -203,6 +205,14 @@ async function bootstrap(): Promise<void> {
   // 调试用：强制纸/墨主题
   const theme = process.env['BUTLER_THEME']
   if (theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme
+  // 调试用：直接弹一次「时段 + 余额」小卡片（等价于右键悬浮球）
+  if (process.env['BUTLER_PEEK'] === '1') {
+    setTimeout(() => {
+      void buildPeekData()
+        .then((data) => showPeekWith(data))
+        .catch((error) => logError('peek', error))
+    }, 2000)
+  }
   // 调试用：本地念一句（不进 DSH），验证 TTS 链路
   if (process.env['BUTLER_SAY']) {
     setTimeout(() => getVoice().speakNow(process.env['BUTLER_SAY'] as string), 1500)

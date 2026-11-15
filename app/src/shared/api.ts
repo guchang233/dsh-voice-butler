@@ -1,5 +1,6 @@
 import type {
   LinkState,
+  PeekData,
   PublicSettings,
   Result,
   SettingsPatch,
@@ -43,6 +44,11 @@ export type ButlerApi = {
   getPersona: () => Promise<PersonaRead>
   savePersona: (text: string) => Promise<PersonaWrite>
   resetPersona: () => Promise<PersonaWrite>
+
+  /* 右键悬浮球：时段 + 余额小卡片 */
+  showPeek: () => void
+  hidePeek: () => void
+  onPeekData: (handler: (data: PeekData) => void) => Unsubscribe
 
   getSkin: () => Promise<string>
   setSkin: (skin: string) => Promise<string>

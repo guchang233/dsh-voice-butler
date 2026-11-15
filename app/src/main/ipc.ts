@@ -4,9 +4,19 @@ import { IPC, type ThemeMode } from '../shared/ipc'
 import { getBridge } from './bridge'
 import { importCustomSkin, listCustomSkins, removeCustomSkin, renameCustomSkin } from './customSkins'
 import { logError, logInfo } from './log'
+import { buildPeekData } from './peek'
 import { saveApiKey, savePreferences, getSettings } from './store'
 import { getVoice } from './voice'
-import { broadcastSkin, endDrag, hidePanel, startDrag, togglePanel } from './windows'
+import {
+  broadcastSkin,
+  endDrag,
+  hidePanel,
+  hidePeek,
+  peekVisible,
+  showPeekWith,
+  startDrag,
+  togglePanel
+} from './windows'
 
 const settingsPatch = z.object({
   apiKey: z.string().max(400).optional(),
@@ -226,6 +236,21 @@ export function registerIpc(): void {
       lastError: bridge.lastError
     }
   })
+
+  /* ------------------------------------------------------------ 右键小卡片 */
+
+  ipcMain.on(IPC.peekShow, () => {
+    // 已经开着就收起来（右键 = 开关）
+    if (peekVisible()) {
+      hidePeek()
+      return
+    }
+    void buildPeekData()
+      .then((data) => showPeekWith(data))
+      .catch((error) => logError('peek', error))
+  })
+
+  ipcMain.on(IPC.peekHide, () => hidePeek())
 
   /* ------------------------------------------------------------ 人格提示词 */
 

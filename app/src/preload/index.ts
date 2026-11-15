@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IPC,
   type LinkState,
+  type PeekData,
   type PublicSettings,
   type Result,
   type SettingsPatch,
@@ -42,6 +43,10 @@ const api: ButlerApi = {
   getPersona: (): Promise<PersonaRead> => ipcRenderer.invoke(IPC.personaGet),
   savePersona: (text: string): Promise<PersonaWrite> => ipcRenderer.invoke(IPC.personaSave, text),
   resetPersona: (): Promise<PersonaWrite> => ipcRenderer.invoke(IPC.personaReset),
+
+  showPeek: (): void => ipcRenderer.send(IPC.peekShow),
+  hidePeek: (): void => ipcRenderer.send(IPC.peekHide),
+  onPeekData: (handler) => subscribe<PeekData>(IPC.peekData, handler),
 
   getSkin: (): Promise<string> => ipcRenderer.invoke(IPC.skinGet),
   setSkin: (skin: string): Promise<string> => ipcRenderer.invoke(IPC.skinSet, skin),

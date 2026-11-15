@@ -1,5 +1,6 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
+import { IPC } from '../shared/ipc'
 import { logError, logInfo } from './log'
 import { saveBallPosition } from './store'
 
@@ -16,7 +17,7 @@ let quitting = false
 
 const preloadPath = (): string => join(__dirname, '../preload/index.js')
 
-function loadPage(win: BrowserWindow, page: 'ball' | 'panel' | 'overlay'): void {
+function loadPage(win: BrowserWindow, page: 'ball' | 'panel' | 'overlay' | 'peek'): void {
   win.webContents.on('preload-error', (_event, preloadPath, error) => {
     logError('preload-error', page, preloadPath, error)
   })
@@ -265,8 +266,116 @@ export function markQuitting(): void {
   quitting = true
 }
 
-/* ------------------------------------------------------------------ 特效层 */
+/* ------------------------------------------------------ 右键小卡片（时段/余额） */
 
+export const PEEK_W = 268
+export const PEEK_H = 178
+
+let peek: BrowserWindow | null = null
+let peekTimer: NodeJS.Timeout | null = null
+
+export function getPeek(): BrowserWindow | null {
+  return peek
+}
+
+export function createPeek(): BrowserWindow {
+  peek = new BrowserWindow({
+    width: PEEK_W,
+    height: PEEK_H,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    hasShadow: false,
+    show: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: preloadPath(),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false
+    }
+  })
+  peek.setAlwaysOnTop(true, 'screen-saver')
+  peek.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  peek.setMenu(null)
+  loadPage(peek, 'peek')
+  return peek
+}
+
+/** 贴着球放：优先在球上方，放不下就下方，再不行居中偏上，全部夹在工作区内 */
+function peekBounds(): { x: number; y: number } {
+  const ballBounds = ball?.getBounds()
+  const wa = ballBounds
+    ? screen.getDisplayNearestPoint({
+        x: ballBounds.x + Math.round(ballBounds.width / 2),
+        y: ballBounds.y + Math.round(ballBounds.height / 2)
+      }).workArea
+    : screen.getPrimaryDisplay().workArea
+  const gap = 10
+
+  if (!ballBounds) {
+    return {
+      x: clamp(wa.x + wa.width - PEEK_W - 20, wa.x + 8, wa.x + wa.width - PEEK_W - 8),
+      y: wa.y + 80
+    }
+  }
+
+  const centered = ballBounds.x + Math.round(ballBounds.width / 2) - Math.round(PEEK_W / 2)
+  const x = clamp(centered, wa.x + 8, wa.x + wa.width - PEEK_W - 8)
+  const above = ballBounds.y - PEEK_H - gap
+  const below = ballBounds.y + ballBounds.height + gap
+
+  let y: number
+  if (above >= wa.y + 8) y = above
+  else if (below + PEEK_H <= wa.y + wa.height - 8) y = below
+  else y = clamp(above, wa.y + 8, wa.y + wa.height - PEEK_H - 8)
+  return { x, y: clamp(y, wa.y + 8, wa.y + wa.height - PEEK_H - 8) }
+}
+
+/** 显示并推数据；页面还没加载好就先等它加载完 */
+export function showPeekWith(data: unknown): void {
+  const win = peek ?? createPeek()
+  if (!win || win.isDestroyed()) return
+
+  const { x, y } = peekBounds()
+  win.setBounds({ x, y, width: PEEK_W, height: PEEK_H })
+
+  const reveal = (): void => {
+    if (!win || win.isDestroyed()) return
+    win.webContents.send(IPC.peekData, data)
+    win.showInactive()
+    if (peekTimer) clearTimeout(peekTimer)
+    peekTimer = setTimeout(() => hidePeek(), 12_000)
+  }
+
+  if (win.webContents.isLoadingMainFrame()) {
+    win.webContents.once('did-finish-load', () => reveal())
+  } else {
+    reveal()
+  }
+}
+
+export function hidePeek(): void {
+  if (peekTimer) {
+    clearTimeout(peekTimer)
+    peekTimer = null
+  }
+  if (peek && !peek.isDestroyed() && peek.isVisible()) peek.hide()
+}
+
+export function peekVisible(): boolean {
+  return Boolean(peek && !peek.isDestroyed() && peek.isVisible())
+}
+
+/* ------------------------------------------------------------------ 特效层 */
 let overlayWin: BrowserWindow | null = null
 
 export function getOverlay(): BrowserWindow | null {

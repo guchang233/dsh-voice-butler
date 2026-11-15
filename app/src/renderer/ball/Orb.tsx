@@ -67,7 +67,20 @@ export default function Orb(): JSX.Element {
   const scale = 1 + Math.min(level, 1) * 0.12
 
   return (
-    <div className={`stage is-${state}${hover ? ' is-hover' : ''}`}>
+    <div
+      className={`stage is-${state}${hover ? ' is-hover' : ''}`}
+      // 右键 = 看时段和余额（和原作小鲸鱼一样）。
+      // 用 mousedown(button=2) 触发，比 contextmenu 稳：非聚焦的透明窗口不一定派发后者。
+      onMouseDown={(event) => {
+        if (event.button !== 2) return
+        event.preventDefault()
+        window.api.showPeek()
+      }}
+      onContextMenu={(event) => {
+        // 只负责压掉系统菜单，触发走上面的 mousedown
+        event.preventDefault()
+      }}
+    >
       <div className="float">
         <div
           className={pressed ? 'orb is-pressed' : 'orb'}
