@@ -92,21 +92,25 @@ export class SentenceChunker {
  * 直接首尾相接就会在接缝处「啪」一声。这里砍掉首尾近静音，再做 6ms 淡入 / 12ms 淡出。
  */
 export function shapeSegment(pcm: Int16Array): Int16Array {
-  const threshold = 328 // 约 -40 dBFS
+  const threshold = 196 // 约 -44 dBFS：只砍真正的死气，不碰字头
   let from = 0
   let to = pcm.length
   while (from < to && Math.abs(pcm[from]) < threshold) from += 1
   while (to > from && Math.abs(pcm[to - 1]) < threshold) to -= 1
   if (to - from < 480) return pcm
   const out = pcm.slice(from, to)
-  const fadeIn = Math.min(Math.round(TTS_SAMPLE_RATE * 0.006), Math.floor(out.length / 4))
-  const fadeOut = Math.min(Math.round(TTS_SAMPLE_RATE * 0.012), Math.floor(out.length / 4))
+  const fadeIn = Math.min(Math.round(TTS_SAMPLE_RATE * 0.008), Math.floor(out.length / 4))
+  const fadeOut = Math.min(Math.round(TTS_SAMPLE_RATE * 0.02), Math.floor(out.length / 4))
   for (let i = 0; i < fadeIn; i += 1) out[i] = Math.round(out[i] * (i / fadeIn))
   for (let i = 0; i < fadeOut; i += 1) {
     const index = out.length - 1 - i
     out[index] = Math.round(out[index] * (i / fadeOut))
   }
-  return out
+  // 段尾补 30ms 静音：两句之间留一个自然的气口，也不至于把两段波形顶在一起
+  const gap = Math.round(TTS_SAMPLE_RATE * 0.03)
+  const padded = new Int16Array(out.length + gap)
+  padded.set(out, 0)
+  return padded
 }
 
 export class TtsQueue {
@@ -207,11 +211,11 @@ export class TtsQueue {
     const view = new Int16Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength))
     const shaped = shapeSegment(view)
     const pcm = new Uint8Array(shaped.buffer, shaped.byteOffset, shaped.byteLength)
-    // 分成小块下发，播放器那边看起来跟流式一样
-    const step = 8192
+    // 一片 1 秒：播放器每个分片都要建一个音源节点，片太碎会在接缝处听到毛刺
+    const step = 48000
     for (let offset = 0; offset < pcm.length; offset += step) {
       this.emit(pcm.subarray(offset, Math.min(offset + step, pcm.length)))
-      await new Promise((resolve) => setTimeout(resolve, 8))
+      await new Promise((resolve) => setTimeout(resolve, 12))
     }
   }
 
