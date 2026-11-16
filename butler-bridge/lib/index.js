@@ -359,6 +359,8 @@ export function apply(ctx) {
   let phase = 'idle'
   let lastError = ''
   let presetOk = null
+  /** 面板最近一次选的模型（DSH 那边记在会话上，这里只为了回显） */
+  let sessionModel = state.sessionModel ?? null
   /** callId → 'tool' | 'mouse'，tool/result 回来时才知道该收哪种特效 */
   const callKinds = new Map()
 
@@ -897,6 +899,92 @@ export function apply(ctx) {
       if (!finish) return sendJson(res, 404, { ok: false, error: '这个确认已经过期了' })
       finish(allow ? 'allowed-once' : 'rejected')
       return sendJson(res, 200, { ok: true })
+    }
+
+    /* ---- 会话列表 / 切换：面板让用户挑「在哪条会话里说话」 ---- */
+    if (p === `${ROUTE_PREFIX}/sessions`) {
+      try {
+        const value = await controller.list({}, AbortSignal.timeout(8000))
+        const items = (value?.items ?? []).map((item) => ({
+          id: String(item.sessionId),
+          cwd: item.cwd ? String(item.cwd).split(/[\\/]/).pop() : '',
+          updatedAt: Number(item.updatedAt ?? 0),
+          running: item.running === true,
+          blank: item.blank === true,
+          current: item.sessionId === sessionId
+        }))
+        return sendJson(res, 200, { ok: true, items })
+      } catch (error) {
+        return sendJson(res, 500, { ok: false, error: String(error?.message ?? error) })
+      }
+    }
+
+    if (p === `${ROUTE_PREFIX}/session`) {
+      if (method !== 'POST') return sendJson(res, 405, { ok: false, error: 'POST only' })
+      const body = await readBody(req, 8 * 1024)
+      const next = String(body.sessionId ?? '').trim()
+      if (!next) return sendJson(res, 400, { ok: false, error: '缺少 sessionId' })
+      if (!(await sessionAlive(next))) return sendJson(res, 404, { ok: false, error: '这条会话不在了' })
+      // 换会话等于换上下文：先把帧与游标清掉，再让 remember() 推一条 hello 让面板重置
+      frames = []
+      seq = 0
+      for (const [id, finish] of [...pendingApprovals]) {
+        finish('cancelled')
+        pendingApprovals.delete(id)
+      }
+      remember(next)
+      logger?.info?.(`[butler-bridge] 切到会话 ${next}`)
+      return sendJson(res, 200, { ok: true, sessionId: next })
+    }
+
+    /* ---- 模型：DSH 支持哪些就给哪些，选中的写回这条会话 ---- */
+    if (p === `${ROUTE_PREFIX}/models`) {
+      try {
+        const catalog = await controller.modelCatalog()
+        const models = []
+        for (const group of catalog?.groups ?? []) {
+          for (const model of group.models ?? []) {
+            models.push({
+              provider: group.id,
+              providerName: group.name,
+              id: model.id,
+              name: model.name,
+              description: model.description ?? '',
+              effort: model.reasoning?.defaultEffort ?? null,
+              efforts: (model.reasoning?.efforts ?? []).map((e) => ({ id: e.id, name: e.name }))
+            })
+          }
+        }
+        return sendJson(res, 200, {
+          ok: true,
+          models,
+          default: catalog?.default ?? null,
+          failures: catalog?.failures ?? [],
+          current: sessionModel
+        })
+      } catch (error) {
+        return sendJson(res, 500, { ok: false, error: String(error?.message ?? error) })
+      }
+    }
+
+    if (p === `${ROUTE_PREFIX}/model`) {
+      if (method !== 'POST') return sendJson(res, 405, { ok: false, error: 'POST only' })
+      if (!sessionId) return sendJson(res, 409, { ok: false, error: '还没有管家会话' })
+      const body = await readBody(req, 8 * 1024)
+      const provider = String(body.provider ?? '').trim()
+      const model = String(body.model ?? '').trim()
+      if (!provider || !model) return sendJson(res, 400, { ok: false, error: '缺少 provider / model' })
+      try {
+        const request = { sessionId, provider, model }
+        if (body.effort) request.effort = String(body.effort)
+        const value = await controller.selectModel(request)
+        sessionModel = { provider, model, effort: body.effort ? String(body.effort) : null }
+        writeJsonFile(STATE_FILE, state)
+        logger?.info?.(`[butler-bridge] 模型切到 ${provider}/${model}`)
+        return sendJson(res, 200, { ok: true, selected: value?.selected ?? sessionModel })
+      } catch (error) {
+        return sendJson(res, 500, { ok: false, error: String(error?.message ?? error) })
+      }
     }
 
     if (p === `${ROUTE_PREFIX}/stop`) {
