@@ -202,7 +202,7 @@ export default function SettingsView({
           </div>
           <span className="field-hint">
             {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.hint ?? ''}
-            {asrProvider === 'deepseek' ? '（跟上面的语音钥匙共用一把 Key）' : '，Key 在对应厂商控制台免费创建。'}
+            {asrProvider === 'deepseek' ? '' : '，Key 在对应厂商控制台免费创建。'}
           </span>
         </div>
 
