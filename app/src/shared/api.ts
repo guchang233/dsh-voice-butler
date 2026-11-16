@@ -1,5 +1,7 @@
 import type {
   AsrPartial,
+  ButlerModelCatalog,
+  ButlerSession,
   LinkState,
   OverlayPayload,
   PeekData,
@@ -83,6 +85,12 @@ export type ButlerApi = {
   onBallHover: (handler: (inside: boolean) => void) => Unsubscribe
   /** 边说边出的字幕（面板状态带上显示） */
   onAsrPartial: (handler: (payload: AsrPartial) => void) => Unsubscribe
+  /** 语音管家工作区里的会话列表（来自 DSH） */
+  listSessions: () => Promise<{ ok: boolean; items?: ButlerSession[]; error?: string }>
+  switchSession: (sessionId: string) => Promise<Result>
+  /** DSH 能路由的模型（来自 DSH 的 modelCatalog） */
+  listModels: () => Promise<{ ok: boolean; catalog?: ButlerModelCatalog; error?: string }>
+  selectModel: (provider: string, model: string, effort?: string) => Promise<Result>
   onVoiceState: (handler: (payload: { state: VoiceState }) => void) => Unsubscribe
   onLinkState: (handler: (payload: { link: LinkState; origin: string }) => void) => Unsubscribe
   onMicLevel: (handler: (level: number) => void) => Unsubscribe

@@ -4,6 +4,8 @@ import {
   type LinkState,
   type OverlayPayload,
   type AsrPartial,
+  type ButlerModelCatalog,
+  type ButlerSession,
   type PeekData,
   type PublicSettings,
   type Result,
@@ -111,6 +113,14 @@ const api: ButlerApi = {
 
   onPanelShown: (handler) => subscribe<null>(IPC.panelShown, () => handler()),
   onBallHover: (handler) => subscribe<boolean>(IPC.ballHover, handler),
+  listSessions: (): Promise<{ ok: boolean; items?: ButlerSession[]; error?: string }> =>
+    ipcRenderer.invoke(IPC.sessionsList),
+  switchSession: (sessionId: string): Promise<Result> =>
+    ipcRenderer.invoke(IPC.sessionSwitch, sessionId),
+  listModels: (): Promise<{ ok: boolean; catalog?: ButlerModelCatalog; error?: string }> =>
+    ipcRenderer.invoke(IPC.modelsList),
+  selectModel: (provider: string, model: string, effort?: string): Promise<Result> =>
+    ipcRenderer.invoke(IPC.modelSelect, { provider, model, effort }),
   onAsrPartial: (handler) => subscribe<AsrPartial>(IPC.asrPartial, handler),
   onVoiceState: (handler) => subscribe<{ state: VoiceState }>(IPC.voiceState, handler),
   onLinkState: (handler) => subscribe<{ link: LinkState; origin: string }>(IPC.linkState, handler),

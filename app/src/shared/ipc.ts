@@ -54,6 +54,10 @@ export const IPC = {
   linkState: 'link:state',
   voiceSay: 'voice:say',
   asrPartial: 'asr:partial',
+  sessionsList: 'sessions:list',
+  sessionSwitch: 'session:switch',
+  modelsList: 'models:list',
+  modelSelect: 'model:select',
   voiceStop: 'voice:stop',
   voiceApprove: 'voice:approve',
   voiceNew: 'voice:new',
@@ -158,6 +162,32 @@ export const ASR_PROVIDERS: Array<{ value: AsrProvider; label: string; hint: str
 
 /** 边说边出的字幕（面板状态带上显示） */
 export type AsrPartial = { committed: string; partial: string }
+
+/* ---- 会话与模型（都来自 DSH，面板只做选择） ---- */
+export type ButlerSession = {
+  id: string
+  cwd: string
+  updatedAt: number
+  running: boolean
+  blank: boolean
+  current: boolean
+}
+
+export type ButlerModel = {
+  provider: string
+  providerName: string
+  id: string
+  name: string
+  description: string
+  effort: string | null
+  efforts: Array<{ id: string; name: string }>
+}
+
+export type ButlerModelCatalog = {
+  models: ButlerModel[]
+  current: { provider: string; model: string; effort: string | null } | null
+  failures: Array<{ id: string; name: string; message: string }>
+}
 
 export type PublicSettings = {
   skin: SkinKey

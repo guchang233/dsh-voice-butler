@@ -3,6 +3,8 @@ import { Check, Loader2 } from 'lucide-react'
 import {
   ASR_PROVIDERS,
   type AsrProvider,
+  type ButlerModelCatalog,
+  type ButlerSession,
   BALL_LEVELS,
   WAKE_WORD,
   type Accent,
@@ -76,6 +78,73 @@ export default function SettingsView({
     if (!settings) return
     setAsrProvider(settings.asrProvider)
   }, [settings?.asrProvider])
+
+  const [sessions, setSessions] = useState<ButlerSession[]>([])
+  const [catalog, setCatalog] = useState<ButlerModelCatalog | null>(null)
+  const [pickSession, setPickSession] = useState('')
+  const [pickModel, setPickModel] = useState('')
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkNote, setLinkNote] = useState<Tone>({ kind: 'idle', text: '' })
+
+  const loadSessions = async (): Promise<void> => {
+    const result = await window.api.listSessions()
+    if (!result.ok || !result.items) {
+      setLinkNote({ kind: 'bad', text: result.error ?? '读不到会话列表' })
+      return
+    }
+    setSessions(result.items)
+    const current = result.items.find((item) => item.current)
+    if (current) setPickSession(current.id)
+  }
+
+  const loadModels = async (): Promise<void> => {
+    const result = await window.api.listModels()
+    if (!result.ok || !result.catalog) {
+      setLinkNote({ kind: 'bad', text: result.error ?? '读不到模型列表' })
+      return
+    }
+    setCatalog(result.catalog)
+    const current = result.catalog.current
+    if (current) setPickModel(`${current.provider}|${current.model}`)
+    else if (result.catalog.models[0]) {
+      setPickModel(`${result.catalog.models[0].provider}|${result.catalog.models[0].id}`)
+    }
+  }
+
+  useEffect(() => {
+    void loadSessions()
+    void loadModels()
+    // 只在挂载时拉一次；想刷新有按钮
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const applySession = async (): Promise<void> => {
+    if (!pickSession) return
+    setLinkBusy(true)
+    const result = await window.api.switchSession(pickSession)
+    setLinkBusy(false)
+    setLinkNote(
+      result.ok
+        ? { kind: 'ok', text: '已经切到这条会话，面板会重新拉一遍历史' }
+        : { kind: 'bad', text: result.error ?? '切换失败' }
+    )
+    if (result.ok) await loadSessions()
+  }
+
+  const applyModel = async (): Promise<void> => {
+    if (!pickModel) return
+    const [provider, model] = pickModel.split('|')
+    if (!provider || !model) return
+    setLinkBusy(true)
+    const result = await window.api.selectModel(provider, model)
+    setLinkBusy(false)
+    setLinkNote(
+      result.ok
+        ? { kind: 'ok', text: `管家现在用 ${model}` }
+        : { kind: 'bad', text: result.error ?? '选择失败' }
+    )
+    if (result.ok) await loadModels()
+  }
 
   const save = async (): Promise<void> => {
     setState({ kind: 'busy', text: '正在校验…' })
@@ -407,6 +476,63 @@ export default function SettingsView({
 
       <section className="set-card" hidden={tab !== 'dsh'}>
         <h2>DSH 连接</h2>
+        <div className="field">
+          <span className="field-label">管家会话</span>
+          <select
+            className="input"
+            value={pickSession}
+            onChange={(event) => setPickSession(event.target.value)}
+          >
+            {sessions.length === 0 && <option value="">（没读到会话）</option>}
+            {sessions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {`${item.cwd || '会话'} · ${item.id.slice(-6)}${item.current ? '（当前）' : ''}${item.running ? ' · 正在跑' : ''}`}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">
+            说话的内容会进这一条会话；换会话等于换上下文，面板历史会重新拉。
+          </span>
+          <div className="row-actions">
+            <button type="button" className="btn btn-primary" onClick={() => void applySession()} disabled={linkBusy}>
+              切到这条会话
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => void loadSessions()} disabled={linkBusy}>
+              刷新列表
+            </button>
+          </div>
+        </div>
+
+        <div className="field">
+          <span className="field-label">管家用的模型</span>
+          <select
+            className="input"
+            value={pickModel}
+            onChange={(event) => setPickModel(event.target.value)}
+          >
+            {!catalog && <option value="">（没读到模型）</option>}
+            {catalog?.models.map((item) => (
+              <option key={`${item.provider}|${item.id}`} value={`${item.provider}|${item.id}`}>
+                {`${item.providerName} · ${item.name}`}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">
+            列表直接来自 DSH 的模型目录；选中就写回这条会话（下次回复起生效）。
+          </span>
+          <div className="row-actions">
+            <button type="button" className="btn btn-primary" onClick={() => void applyModel()} disabled={linkBusy}>
+              用这个模型
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => void loadModels()} disabled={linkBusy}>
+              重新读取
+            </button>
+          </div>
+        </div>
+        {linkNote.text && (
+          <div className={linkNote.kind === 'bad' ? 'toast bad' : 'toast ok'}>{linkNote.text}</div>
+        )}
+
         <label className="field">
           <span className="field-label">DSH 地址</span>
           <input

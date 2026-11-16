@@ -291,6 +291,58 @@ export function registerIpc(): void {
     }
   })
 
+  /* ------------------------------------------------------------ 会话与模型 */
+
+  ipcMain.handle(IPC.sessionsList, async () => {
+    try {
+      return { ok: true as const, items: await getBridge().listSessions() }
+    } catch (error) {
+      logError('sessions.list', error)
+      return { ok: false as const, error: String((error as Error)?.message ?? error) }
+    }
+  })
+
+  ipcMain.handle(IPC.sessionSwitch, async (_event, raw: unknown) => {
+    const parsed = z.string().min(3).max(200).safeParse(raw)
+    if (!parsed.success) return { ok: false as const, error: '会话 id 不对' }
+    try {
+      await getBridge().switchSession(parsed.data)
+      logInfo('sessions.switch', parsed.data)
+      return { ok: true as const }
+    } catch (error) {
+      logError('sessions.switch', error)
+      return { ok: false as const, error: String((error as Error)?.message ?? error) }
+    }
+  })
+
+  ipcMain.handle(IPC.modelsList, async () => {
+    try {
+      return { ok: true as const, catalog: await getBridge().listModels() }
+    } catch (error) {
+      logError('models.list', error)
+      return { ok: false as const, error: String((error as Error)?.message ?? error) }
+    }
+  })
+
+  ipcMain.handle(IPC.modelSelect, async (_event, raw: unknown) => {
+    const parsed = z
+      .object({
+        provider: z.string().min(1).max(80),
+        model: z.string().min(1).max(120),
+        effort: z.string().min(1).max(40).optional()
+      })
+      .safeParse(raw)
+    if (!parsed.success) return { ok: false as const, error: '模型参数不对' }
+    try {
+      await getBridge().selectModel(parsed.data.provider, parsed.data.model, parsed.data.effort)
+      logInfo('models.select', `${parsed.data.provider}/${parsed.data.model}`)
+      return { ok: true as const }
+    } catch (error) {
+      logError('models.select', error)
+      return { ok: false as const, error: String((error as Error)?.message ?? error) }
+    }
+  })
+
   /* ------------------------------------------------------------ 右键小卡片 */
 
   ipcMain.on(IPC.peekShow, () => {

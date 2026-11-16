@@ -1,3 +1,12 @@
+import {
+  listModels,
+  listSessions,
+  selectModel,
+  switchSession,
+  type BridgeModelCatalog,
+  type BridgeSession,
+  type BridgeShell,
+} from './bridgeSessions'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -143,6 +152,34 @@ export class DshBridge {
     await this.post('/voice/new', '{}', 20_000)
     this.cursor = -1
     this.epoch = 0
+  }
+
+  /* ------------------------------------------------------------ 会话与模型 */
+
+  /** 给 bridgeSessions 用的小适配器：把当前 origin 与令牌一起带上 */
+  private shellAdapter(): BridgeShell {
+    return {
+      origin: this.origin || this.resolveOrigin(),
+      authHeaders: () => this.authHeaders(true),
+      post: (path, body, timeoutMs) => this.post(path, body, timeoutMs)
+    }
+  }
+
+  listSessions(): Promise<BridgeSession[]> {
+    return listSessions(this.shellAdapter())
+  }
+
+  async switchSession(sessionId: string): Promise<void> {
+    await switchSession(this.shellAdapter(), sessionId)
+    this.cursor = -1
+  }
+
+  listModels(): Promise<BridgeModelCatalog> {
+    return listModels(this.shellAdapter())
+  }
+
+  selectModel(provider: string, model: string, effort?: string): Promise<void> {
+    return selectModel(this.shellAdapter(), provider, model, effort)
   }
 
   /* ------------------------------------------------------------ 人格提示词 */
