@@ -114,6 +114,9 @@ const api: ButlerApi = {
 
   onPanelShown: (handler) => subscribe<null>(IPC.panelShown, () => handler()),
   onBallHover: (handler) => subscribe<boolean>(IPC.ballHover, handler),
+  verifyAsr: (payload: { provider: string; asrApiKey?: string; asrModel?: string }): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC.asrVerify, payload),
+  applySettings: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke(IPC.settingsApply),
   revealSecrets: (): Promise<{
     ok: boolean
     apiKey?: string

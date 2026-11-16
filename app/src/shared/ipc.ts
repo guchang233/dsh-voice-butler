@@ -55,6 +55,8 @@ export const IPC = {
   voiceSay: 'voice:say',
   asrPartial: 'asr:partial',
   secretsReveal: 'secrets:reveal',
+  asrVerify: 'asr:verify',
+  settingsApply: 'settings:apply',
   sessionsList: 'sessions:list',
   sessionSwitch: 'session:switch',
   modelsList: 'models:list',

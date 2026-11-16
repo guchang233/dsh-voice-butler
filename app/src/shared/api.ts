@@ -86,6 +86,10 @@ export type ButlerApi = {
   onBallHover: (handler: (inside: boolean) => void) => Unsubscribe
   /** 边说边出的字幕（面板状态带上显示） */
   onAsrPartial: (handler: (payload: AsrPartial) => void) => Unsubscribe
+  /** 只校验，不落盘 */
+  verifyAsr: (payload: { provider: string; asrApiKey?: string; asrModel?: string }) => Promise<{ ok: boolean; error?: string }>
+  /** 让新配置立刻生效（重置识别会话、重读设置） */
+  applySettings: () => Promise<{ ok: boolean; error?: string }>
   /** 读出已保存的明文 Key，用来回填输入框 */
   revealSecrets: () => Promise<{
     ok: boolean

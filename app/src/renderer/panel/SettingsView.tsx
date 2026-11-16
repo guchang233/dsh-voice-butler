@@ -205,12 +205,24 @@ export default function SettingsView({
     onSaved(next, '设置已保存')
   }
 
-  const clearAsrKey = async (): Promise<void> => {
-    const result = await window.api.saveSettings({ asrProvider, asrApiKey: '' })
-    if (result.ok) {
-      const next = await window.api.getSettings()
-      onSaved(next, '识别 Key 已清除')
-    }
+  /** 只校验：用框里这把 Key 与当前模型跑一次真实识别，不落盘 */
+  const verifyKeyNow = async (): Promise<void> => {
+    const result = await window.api.verifyAsr({
+      provider: asrProvider,
+      asrApiKey: (asrKeys[asrProvider] ?? '').trim() || undefined,
+      asrModel
+    })
+    onToast(result.ok ? '校验通过，这家能用了' : (result.error ?? '校验没通过'), result.ok ? 'ok' : 'bad')
+  }
+
+  /** 应用：保存 + 让正在跑的会话立刻用上新配置 */
+  const applyNow = async (): Promise<void> => {
+    await save()
+    const result = await window.api.applySettings()
+    onToast(
+      result.ok ? '已应用到当前会话' : (result.error ?? '应用失败'),
+      result.ok ? 'ok' : 'bad'
+    )
   }
 
   const clearKey = async (): Promise<void> => {
@@ -357,8 +369,8 @@ export default function SettingsView({
             </div>
             <span className="field-hint">
               {settings?.hasAsrKey
-                ? '这家已经有 Key 了，直接显示在框里；改完点「保存并校验」。'
-                : '这家还没有 Key；填好点「保存并校验」，会先查一次模型列表，不花识别额度。'}
+                ? '这家已经有 Key 了，直接显示在框里：改完点「保存」，想确认能用点「校验」。'
+                : '这家还没有 Key；填好先「保存」，「校验」会跑一次很短的识别来确认。'}
               每家各存一把，互不影响。
             </span>
           </label>
@@ -372,18 +384,14 @@ export default function SettingsView({
             disabled={state.kind === 'busy'}
           >
             {state.kind === 'busy' ? <Loader2 size={15} className="spin" /> : <Check size={15} strokeWidth={2} />}
-            保存并校验
+            保存
           </button>
-          {asrProvider !== 'deepseek' && (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => void clearAsrKey()}
-              disabled={!settings?.hasAsrKey}
-            >
-              清除识别 Key
-            </button>
-          )}
+          <button type="button" className="btn btn-ghost" onClick={() => void applyNow()}>
+            应用
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={() => void verifyKeyNow()}>
+            校验
+          </button>
         </div>
       </section>
 
@@ -479,7 +487,7 @@ export default function SettingsView({
             disabled={state.kind === 'busy'}
           >
             {state.kind === 'busy' ? <Loader2 size={15} className="spin" /> : <Check size={15} strokeWidth={2} />}
-            保存并校验
+            保存
           </button>
 
           <button type="button" className="btn btn-ghost" onClick={() => void clearKey()} disabled={!settings?.hasKey}>

@@ -9,6 +9,7 @@ import {
   getApiKey,
   getAsrKey,
   getAsrKeys,
+  getAsrKeyFor,
   saveApiKey,
   saveAsrKey,
   savePreferences,
@@ -110,20 +111,10 @@ export function registerIpc(): void {
 
     // 识别厂商先定下来，后面的 Key 才知道存到谁名下
     if (patch.asrProvider !== undefined) savePreferences({ asrProvider: patch.asrProvider })
+    // 「保存」只落盘；校验与应用是面板上另外两个按钮
     if (patch.asrApiKey !== undefined) {
       const provider = patch.asrProvider ?? getSettings().asrProvider
-      const trimmed = patch.asrApiKey.trim()
-      if (trimmed) {
-        try {
-          await verifyAsrKey(provider, trimmed, {
-        baseUrl: patch.baseUrl ?? getSettings().baseUrl,
-        model: patch.asrModel ?? getSettings().asrModel
-      })
-        } catch (error) {
-          return { ok: false as const, error: error instanceof Error ? error.message : '识别 Key 校验失败' }
-        }
-      }
-      saveAsrKey(provider, trimmed)
+      saveAsrKey(provider, patch.asrApiKey)
     }
 
     if (patch.apiKey !== undefined && patch.apiKey.trim().length > 0) {
@@ -315,6 +306,51 @@ export function registerIpc(): void {
       return { ok: true as const, apiKey: getApiKey(), asrKeys: getAsrKeys() }
     } catch (error) {
       logError('secrets.reveal', error)
+      return { ok: false as const, error: String((error as Error)?.message ?? error) }
+    }
+  })
+
+  /* ------------------------------------------------------------ 校验 / 应用 */
+
+  ipcMain.handle(IPC.asrVerify, async (_event, raw: unknown) => {
+    const parsed = z
+      .object({
+        provider: z.enum(['siliconflow', 'dashscope', 'deepseek']),
+        asrApiKey: z.string().max(400).optional(),
+        asrModel: z.string().max(120).optional()
+      })
+      .safeParse(raw)
+    if (!parsed.success) return { ok: false as const, error: '校验参数不对' }
+
+    const provider = parsed.data.provider
+    const model = parsed.data.asrModel ?? getSettings().asrModel
+    const typed = (parsed.data.asrApiKey ?? '').trim()
+    const key = provider === 'deepseek' ? getApiKey() : typed || getAsrKeyFor(provider)
+    if (!key) {
+      return {
+        ok: false as const,
+        error: provider === 'deepseek' ? 'DeepSeek 还没配语音钥匙' : '这一家还没填 Key'
+      }
+    }
+    try {
+      await verifyAsrKey(provider, key, { baseUrl: getSettings().baseUrl, model })
+      logInfo('asr.verify', provider + ' ok, model=' + model)
+      return { ok: true as const }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '校验失败'
+      logError('asr.verify', new Error(provider + ' 失败（model=' + model + '）：' + message))
+      return { ok: false as const, error: message }
+    }
+  })
+
+  ipcMain.handle(IPC.settingsApply, () => {
+    try {
+      getVoice().applySettings()
+      const settings = getSettings()
+      logInfo('settings.apply', settings.asrProvider + ' / ' + settings.asrModel)
+      return { ok: true as const }
+    } catch (error) {
+      logError('settings.apply', error)
       return { ok: false as const, error: String((error as Error)?.message ?? error) }
     }
   })

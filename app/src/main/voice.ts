@@ -133,6 +133,27 @@ export class Voice {
   }
 
 
+  /** 面板上点「应用」时调：让新配置立刻生效，不用重启 */
+  applySettings(): void {
+    this.asr.reset()
+    this.chunker = new SentenceChunker()
+    this.micEnabled = getSettings().micEnabled
+    if (this.state !== 'idle' && this.state !== 'offline') {
+      this.toIdle()
+    }
+    logInfo(
+      'voice',
+      'settings applied: asr=' +
+        getSettings().asrProvider +
+        '/' +
+        getSettings().asrModel +
+        ' tts=' +
+        getSettings().ttsProvider +
+        '/' +
+        getSettings().ttsVoice
+    )
+  }
+
   start(): void {
     this.watcher = createKeywordWatcher({ label: 'kws' })
     // 播报时自己的声音会盖住人声，标准门限经常打不着——这里单独一个更灵敏的

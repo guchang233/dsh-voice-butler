@@ -69,6 +69,15 @@ describe('设置页的标签页', () => {
     expect(html).toContain('key-row')
   })
 
+  it('语音识别有三个按钮：保存 / 应用 / 校验，且没有「清除识别 Key」', () => {
+    const html = render()
+    expect(html).toContain('>保存<')
+    expect(html).toContain('>应用<')
+    expect(html).toContain('>校验<')
+    expect(html).not.toContain('保存并校验')
+    expect(html).not.toContain('清除识别 Key')
+  })
+
   it('DSH 页里有会话和模型两个下拉', () => {
     const html = render()
     expect(html).toContain('管家会话')
