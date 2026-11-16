@@ -42,6 +42,8 @@ type Stored = {
   ballLevel?: BallLevel
   /** 语音识别厂商 */
   asrProvider?: AsrProvider
+  /** 当前厂商下选的具体模型（留空用该家默认） */
+  asrModel?: string
   /** 各厂商的识别 Key（base64，enc 说明是否 safeStorage 加密过） */
   asrKeys?: Partial<Record<AsrProvider, { value: string; enc: boolean }>>
   /** 手动指定的 DSH 地址；留空则读 endpoint.json */
@@ -85,7 +87,9 @@ function normalizeTheme(value: unknown): ThemeMode {
  * 升级上来不能突然说「还没配识别 Key」——那种情况继续用 DeepSeek；新装才默认硅基流动。
  */
 function normalizeAsrProvider(value: unknown, fallback: AsrProvider = 'siliconflow'): AsrProvider {
-  if (value === 'siliconflow' || value === 'zhipu' || value === 'deepseek') return value
+  if (value === 'siliconflow' || value === 'zhipu' || value === 'dashscope' || value === 'deepseek') {
+    return value
+  }
   return fallback
 }
 
@@ -134,6 +138,7 @@ function read(): Stored {
       effect: normalizeEffect(parsed.effect),
       ballLevel: normalizeBallLevel(parsed.ballLevel),
       asrProvider: normalizeAsrProvider(parsed.asrProvider, parsed.apiKey ? 'deepseek' : 'siliconflow'),
+      asrModel: typeof parsed.asrModel === 'string' ? parsed.asrModel : undefined,
       asrKeys: parsed.asrKeys,
       dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined,
     }
@@ -157,6 +162,7 @@ export type PublicLike = {
   hasKey: boolean
   asrProvider: AsrProvider
   hasAsrKey: boolean
+  asrModel: string
   baseUrl: string
   ballPosition: { x: number; y: number } | null
   wakeWord: string
@@ -178,6 +184,7 @@ export function getSettings(): PublicLike {
     hasKey: !!s.apiKey,
     asrProvider: normalizeAsrProvider(s.asrProvider),
     hasAsrKey: !!getAsrKey(),
+    asrModel: resolveAsrModel(s),
     baseUrl: s.baseUrl,
     ballPosition: s.ballPosition ?? null,
     wakeWord: WAKE_WORD,
@@ -226,6 +233,20 @@ export function saveApiKey(key: string): void {
   }
 }
 
+/** 当前厂商用的模型：存过就用存的，否则用该家第一项 */
+export function resolveAsrModel(s: Stored = read()): string {
+  const provider = normalizeAsrProvider(s.asrProvider)
+  const stored = typeof s.asrModel === 'string' ? s.asrModel.trim() : ''
+  if (stored) return stored
+  return provider === 'siliconflow'
+    ? 'FunAudioLLM/SenseVoiceSmall'
+    : provider === 'zhipu'
+      ? 'glm-asr-2512'
+      : provider === 'dashscope'
+        ? 'qwen3-asr-flash'
+        : 'default'
+}
+
 /** 当前识别厂商的明文 Key（只在主进程内用） */
 export function getAsrKey(): string {
   const s = read()
@@ -260,6 +281,8 @@ export function saveAsrKey(provider: AsrProvider, key: string): void {
 
 export function savePreferences(patch: {
   asrProvider?: AsrProvider
+  /** 当前厂商下选的具体模型（留空用该家默认） */
+  asrModel?: string
   baseUrl?: string
   micEnabled?: boolean
   ttsVoice?: 'stella' | 'tide'
@@ -288,6 +311,7 @@ export function savePreferences(patch: {
     ballLevel: normalizeBallLevel(patch.ballLevel ?? s.ballLevel),
     // 没传就沿用推断值（有 DeepSeek 钥匙的老用户不该被一次无关保存切成硅基流动）
     asrProvider: normalizeAsrProvider(patch.asrProvider ?? s.asrProvider, s.apiKey ? 'deepseek' : 'siliconflow'),
+    asrModel: patch.asrModel ?? s.asrModel,
     dshOrigin: patch.dshOrigin ?? s.dshOrigin,
   })
 }

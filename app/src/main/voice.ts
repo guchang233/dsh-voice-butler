@@ -115,7 +115,7 @@ export class Voice {
       if (!key) {
         throw new Error(provider === 'deepseek' ? '还没有配置语音钥匙' : '还没有配置语音识别的 Key')
       }
-      return transcribe(provider, key, wav, settings.baseUrl)
+      return transcribe(provider, key, wav, { baseUrl: settings.baseUrl, model: settings.asrModel })
     })
     this.asr.onUpdate((shown) => {
       if (this.state !== 'listening' && this.state !== 'confirming') return

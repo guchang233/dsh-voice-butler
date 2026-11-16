@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
 import {
+  ASR_MODELS,
   ASR_PROVIDERS,
   type AsrProvider,
   type ButlerModelCatalog,
@@ -61,10 +62,32 @@ export default function SettingsView({
   const [tab, setTab] = useState<SetTab>(settings ? 'asr' : 'asr')
   const [asrProvider, setAsrProvider] = useState<AsrProvider>(settings?.asrProvider ?? 'siliconflow')
   const [asrKey, setAsrKey] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [showAsrKey, setShowAsrKey] = useState(false)
+  const [asrModel, setAsrModel] = useState(settings?.asrModel ?? '')
+  // 记住刚回填的值：没改就别重发，免得每次保存都去校验一遍
+  const loaded = useRef({ apiKey: '', asrKey: '' })
   const [persona, setPersona] = useState('')
   const [personaIsDefault, setPersonaIsDefault] = useState(true)
   const [personaState, setPersonaState] = useState<Tone>({ kind: 'idle', text: '' })
   const [state, setState] = useState<Tone>({ kind: 'idle', text: '' })
+
+  useEffect(() => {
+    void window.api.revealSecrets().then((result) => {
+      if (!result.ok) return
+      loaded.current.apiKey = result.apiKey ?? ''
+      loaded.current.asrKey = result.asrKey ?? ''
+      setApiKey(result.apiKey ?? '')
+      setAsrKey(result.asrKey ?? '')
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!settings) return
+    const list = ASR_MODELS[asrProvider] ?? []
+    const keep = list.some((item) => item.id === asrModel)
+    if (!keep) setAsrModel(list[0]?.id ?? '')
+  }, [asrProvider, settings])
 
   useEffect(() => {
     void window.api.getPersona().then((result) => {
@@ -149,9 +172,10 @@ export default function SettingsView({
   const save = async (): Promise<void> => {
     setState({ kind: 'busy', text: '正在校验…' })
     const result = await window.api.saveSettings({
-      apiKey: apiKey.trim() || undefined,
+      apiKey: apiKey.trim() && apiKey.trim() !== loaded.current.apiKey ? apiKey.trim() : undefined,
       asrProvider,
-      asrApiKey: asrKey.trim() || undefined,
+      asrModel,
+      asrApiKey: asrKey.trim() && asrKey.trim() !== loaded.current.asrKey ? asrKey.trim() : undefined,
       baseUrl: baseUrl.trim() || undefined,
       dshOrigin: dshOrigin.trim(),
       ttsVoice: voice,
@@ -258,6 +282,22 @@ export default function SettingsView({
               </button>
             ))}
           </div>
+        <div className="field">
+          <span className="field-label">识别模型</span>
+          <select
+            className="input"
+            value={asrModel}
+            onChange={(event) => setAsrModel(event.target.value)}
+          >
+            {(ASR_MODELS[asrProvider] ?? []).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">换了厂商会自动换成该家的默认模型。</span>
+        </div>
+
           <span className="field-hint">
             {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.hint ?? ''}。
             {asrProvider === 'deepseek' ? '' : 'Key 在对应厂商控制台免费创建。'}
@@ -270,15 +310,26 @@ export default function SettingsView({
             <span className="field-label">
               {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.label ?? ''} 识别 Key
             </span>
-            <input
-              className="input"
-              type="password"
-              placeholder={settings?.hasAsrKey ? '已配置，留空表示不修改' : 'sk-…'}
-              value={asrKey}
-              onChange={(event) => setAsrKey(event.target.value)}
-              spellCheck={false}
-            />
-            <span className="field-hint">改完点下面的「保存并校验」，会先查一次模型列表，不花识别额度。</span>
+            <div className="key-row">
+              <input
+                className="input"
+                type={showAsrKey ? 'text' : 'password'}
+                placeholder="sk-…"
+                value={asrKey}
+                onChange={(event) => setAsrKey(event.target.value)}
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowAsrKey((v) => !v)}
+              >
+                {showAsrKey ? '隐藏' : '显示'}
+              </button>
+            </div>
+            <span className="field-hint">
+              已保存的 Key 会填在这里；改完点「保存并校验」，会先查一次模型列表，不花识别额度。
+            </span>
           </label>
         )}
 
@@ -310,14 +361,23 @@ export default function SettingsView({
         <h2>语音</h2>
         <label className="field">
           <span className="field-label">语音钥匙（只用于听写和朗读）</span>
-          <input
-            className="input"
-            type="password"
-            placeholder={settings?.hasKey ? '已配置，留空表示不修改' : 'sk-…'}
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            spellCheck={false}
-          />
+          <div className="key-row">
+            <input
+              className="input"
+              type={showApiKey ? 'text' : 'password'}
+              placeholder="sk-…"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowApiKey((v) => !v)}
+            >
+              {showApiKey ? '隐藏' : '显示'}
+            </button>
+          </div>
           <span className="field-hint">
             对话在 DSH 里跑。这把 Key 只驱动识别和合成，保存时用 <code>GET /models</code> 校验。
           </span>

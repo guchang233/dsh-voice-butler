@@ -5,7 +5,7 @@ import { getBridge } from './bridge'
 import { importCustomSkin, listCustomSkins, removeCustomSkin, renameCustomSkin } from './customSkins'
 import { logError, logInfo } from './log'
 import { buildPeekData } from './peek'
-import { saveApiKey, saveAsrKey, savePreferences, getSettings } from './store'
+import { getApiKey, getAsrKey, saveApiKey, saveAsrKey, savePreferences, getSettings } from './store'
 import { verifyAsrKey } from './speech/asr'
 import { syncOverlay } from './overlay'
 import { getVoice } from './voice'
@@ -37,7 +37,8 @@ const settingsPatch = z.object({
   effect: z.enum(['off', 'soft', 'vivid']).optional(),
   continuous: z.boolean().optional(),
   ballLevel: z.enum(['top', 'float', 'normal']).optional(),
-  asrProvider: z.enum(['siliconflow', 'zhipu', 'deepseek']).optional(),
+  asrProvider: z.enum(['siliconflow', 'zhipu', 'dashscope', 'deepseek']).optional(),
+  asrModel: z.string().max(120).optional(),
   asrApiKey: z.string().max(400).optional(),
 })
 
@@ -104,7 +105,10 @@ export function registerIpc(): void {
       const trimmed = patch.asrApiKey.trim()
       if (trimmed) {
         try {
-          await verifyAsrKey(provider, trimmed, patch.baseUrl ?? getSettings().baseUrl)
+          await verifyAsrKey(provider, trimmed, {
+        baseUrl: patch.baseUrl ?? getSettings().baseUrl,
+        model: patch.asrModel ?? getSettings().asrModel
+      })
         } catch (error) {
           return { ok: false as const, error: error instanceof Error ? error.message : '识别 Key 校验失败' }
         }
@@ -136,6 +140,7 @@ export function registerIpc(): void {
       continuous: patch.continuous,
       ballLevel: patch.ballLevel,
       asrProvider: patch.asrProvider,
+      asrModel: patch.asrModel,
     })
     if (patch.micEnabled !== undefined) getVoice().setMicEnabled(patch.micEnabled)
     if (patch.theme !== undefined) applyTheme(patch.theme)
@@ -288,6 +293,17 @@ export function registerIpc(): void {
       running: bridge.running,
       origin: bridge.origin,
       lastError: bridge.lastError,
+    }
+  })
+
+  /* ------------------------------------------------------------ 明文密钥（回填输入框用） */
+
+  ipcMain.handle(IPC.secretsReveal, () => {
+    try {
+      return { ok: true as const, apiKey: getApiKey(), asrKey: getAsrKey() }
+    } catch (error) {
+      logError('secrets.reveal', error)
+      return { ok: false as const, error: String((error as Error)?.message ?? error) }
     }
   })
 

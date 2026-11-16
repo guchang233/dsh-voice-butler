@@ -1,20 +1,20 @@
 /**
- * 语音识别：两家免费厂商 + 原来的 DeepSeek 通道。
+ * 语音识别：四家厂商。
  *
- *   硅基流动  https://api.siliconflow.cn/v1/audio/transcriptions   FunAudioLLM/SenseVoiceSmall
- *   智谱      https://open.bigmodel.cn/api/paas/v4/audio/transcriptions   glm-asr-2512（≤30 秒）
- *   DeepSeek  {baseUrl}/v1/tools/asr（老通道，留着兜底）
+ *   硅基流动   POST https://api.siliconflow.cn/v1/audio/transcriptions            (multipart)
+ *   智谱       POST https://open.bigmodel.cn/api/paas/v4/audio/transcriptions     (multipart)
+ *   阿里云百炼 POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+ *              （OpenAI 兼容：base64 data URI 传本地 WAV，不需要 WebSocket）
+ *   DeepSeek   POST {baseUrl}/v1/tools/asr                                       (multipart)
  *
- * 两家都只回整段文本，没有时间戳，所以「边说边出字」由 online-asr.ts 用
- * LocalAgreement-2 反复调用这里的 transcribe 拼出来。
+ * 四家都只回整段文本，所以「边说边出字」由 online-asr.ts 用 LocalAgreement-2 反复调用这里。
  */
 
 import type { AsrProvider } from '../../shared/ipc'
 
 const SILICONFLOW_BASE = 'https://api.siliconflow.cn/v1'
-const SILICONFLOW_MODEL = 'FunAudioLLM/SenseVoiceSmall'
 const ZHIPU_BASE = 'https://open.bigmodel.cn/api/paas/v4'
-const ZHIPU_MODEL = 'glm-asr-2512'
+const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com'
 
 /**
  * 单次请求的上限。
@@ -23,33 +23,34 @@ const ZHIPU_MODEL = 'glm-asr-2512'
  * 后面所有 kick 都被挡掉，finish() 也会一直 await —— 管家会永远卡在「在想」。
  */
 const VERIFY_TIMEOUT_MS = 10_000
-const TRANSCRIBE_TIMEOUT_MS = 12_000
+const TRANSCRIBE_TIMEOUT_MS = 15_000
 
-type Endpoint = { url: string; model: string | null }
-
-function endpointOf(provider: AsrProvider, baseUrl?: string): Endpoint {
-  if (provider === 'siliconflow') {
-    return { url: `${SILICONFLOW_BASE}/audio/transcriptions`, model: SILICONFLOW_MODEL }
-  }
-  if (provider === 'zhipu') {
-    return { url: `${ZHIPU_BASE}/audio/transcriptions`, model: ZHIPU_MODEL }
-  }
-  const base = (baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')
-  return { url: `${base}/v1/tools/asr`, model: null }
+export type TranscribeOptions = {
+  baseUrl?: string
+  model?: string
 }
 
-/** 确认 Key 有效但不动识别额度：前两家查模型列表，DeepSeek 走它自己的校验 */
+function defaultModel(provider: AsrProvider): string {
+  if (provider === 'siliconflow') return 'FunAudioLLM/SenseVoiceSmall'
+  if (provider === 'zhipu') return 'glm-asr-2512'
+  if (provider === 'dashscope') return 'qwen3-asr-flash'
+  return 'default'
+}
+
+/** 确认 Key 有效且不消耗识别额度：前两家查模型列表，百炼走 OpenAI 兼容的 /models */
 export async function verifyAsrKey(
   provider: AsrProvider,
   apiKey: string,
-  baseUrl?: string
+  options?: TranscribeOptions
 ): Promise<void> {
   const url =
     provider === 'siliconflow'
       ? `${SILICONFLOW_BASE}/models`
       : provider === 'zhipu'
-        ? `${ZHIPU_BASE.replace('/paas/v4', '')}/paas/v4/models`
-        : `${(baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/models`
+        ? `${ZHIPU_BASE}/models`
+        : provider === 'dashscope'
+          ? `${DASHSCOPE_BASE}/compatible-mode/v1/models`
+          : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/models`
 
   const res = await fetch(url, {
     method: 'GET',
@@ -63,11 +64,23 @@ export async function transcribe(
   provider: AsrProvider,
   apiKey: string,
   wav: Buffer,
-  baseUrl?: string
+  options?: TranscribeOptions
 ): Promise<string> {
-  const { url, model } = endpointOf(provider, baseUrl)
+  const model = (options?.model || '').trim() || defaultModel(provider)
+
+  if (provider === 'dashscope') {
+    return transcribeDashScope(apiKey, wav, model)
+  }
+
+  const url =
+    provider === 'siliconflow'
+      ? `${SILICONFLOW_BASE}/audio/transcriptions`
+      : provider === 'zhipu'
+        ? `${ZHIPU_BASE}/audio/transcriptions`
+        : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/v1/tools/asr`
+
   const form = new FormData()
-  if (model) form.append('model', model)
+  if (provider !== 'deepseek') form.append('model', model)
   form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'recording.wav')
 
   const res = await fetch(url, {
@@ -87,7 +100,43 @@ export async function transcribe(
   }
 }
 
-/** SenseVoice / GLM-ASR 有时会在正文前后带 <|zh|> 这类标记，不该进对话 */
+/** 百炼：OpenAI 兼容的多模态接口，音频用 base64 data URI 直接塞进去 */
+async function transcribeDashScope(apiKey: string, wav: Buffer, model: string): Promise<string> {
+  const data = `data:audio/wav;base64,${wav.toString('base64')}`
+  const res = await fetch(`${DASHSCOPE_BASE}/compatible-mode/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      stream: false,
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'input_audio', input_audio: { data } }],
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
+  })
+
+  if (!res.ok) throw new Error(await describe('dashscope', res))
+  const raw = await res.text()
+  try {
+    const body = JSON.parse(raw) as {
+      choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>
+    }
+    const content = body.choices?.[0]?.message?.content
+    const text = Array.isArray(content) ? content.map((part) => part.text ?? '').join('') : (content ?? '')
+    return cleanTranscript(text)
+  } catch {
+    throw new Error('语音识别返回了非 JSON 内容：' + raw.slice(0, 160))
+  }
+}
+
+/** SenseVoice / GLM-ASR / Qwen-ASR 有时会在正文前后带 <|zh|> 这类标记，不该进对话 */
 function cleanTranscript(text: string): string {
   return text
     .replace(/<\|[^|>]*\|>/g, '')
@@ -111,9 +160,15 @@ async function describe(provider: AsrProvider, res: Response): Promise<string> {
   detail = detail.replace(/\s+/g, ' ').trim().slice(0, 200)
 
   const who =
-    provider === 'siliconflow' ? '硅基流动' : provider === 'zhipu' ? '智谱' : '语音识别'
+    provider === 'siliconflow'
+      ? '硅基流动'
+      : provider === 'zhipu'
+        ? '智谱'
+        : provider === 'dashscope'
+          ? '阿里云百炼'
+          : '语音识别'
   const map: Record<number, string> = {
-    400: '这段音频服务端无法识别（400，智谱要求单段 ≤30 秒）',
+    400: '这段音频服务端无法识别（400）',
     401: `${who} API Key 无效（401）`,
     402: '账户余额不足（402）',
     403: '没有使用该模型的权限（403）',

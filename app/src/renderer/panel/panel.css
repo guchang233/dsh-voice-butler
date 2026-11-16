@@ -1289,3 +1289,18 @@ button:disabled {
 .set-card[hidden] {
   display: none;
 }
+/* 密钥输入框 + 显示/隐藏按钮 */
+.key-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.key-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.key-row .btn {
+  flex: none;
+}

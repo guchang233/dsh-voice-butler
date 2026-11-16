@@ -85,6 +85,8 @@ export type ButlerApi = {
   onBallHover: (handler: (inside: boolean) => void) => Unsubscribe
   /** 边说边出的字幕（面板状态带上显示） */
   onAsrPartial: (handler: (payload: AsrPartial) => void) => Unsubscribe
+  /** 读出已保存的明文 Key，用来回填输入框 */
+  revealSecrets: () => Promise<{ ok: boolean; apiKey?: string; asrKey?: string; error?: string }>
   /** 语音管家工作区里的会话列表（来自 DSH） */
   listSessions: () => Promise<{ ok: boolean; items?: ButlerSession[]; error?: string }>
   switchSession: (sessionId: string) => Promise<Result>

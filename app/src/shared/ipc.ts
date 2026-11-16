@@ -54,6 +54,7 @@ export const IPC = {
   linkState: 'link:state',
   voiceSay: 'voice:say',
   asrPartial: 'asr:partial',
+  secretsReveal: 'secrets:reveal',
   sessionsList: 'sessions:list',
   sessionSwitch: 'session:switch',
   modelsList: 'models:list',
@@ -152,16 +153,34 @@ export const BALL_LEVELS: Array<{ value: BallLevel; label: string; hint: string 
 ]
 
 /** 语音识别厂商：两家都有免费额度 */
-export type AsrProvider = 'siliconflow' | 'zhipu' | 'deepseek'
+export type AsrProvider = 'siliconflow' | 'zhipu' | 'dashscope' | 'deepseek'
+
+/** 每家可选的具体模型；第一项是默认 */
+export const ASR_MODELS: Record<AsrProvider, Array<{ id: string; label: string }>> = {
+  siliconflow: [{ id: 'FunAudioLLM/SenseVoiceSmall', label: 'SenseVoiceSmall（免费）' }],
+  zhipu: [
+    { id: 'glm-asr-2512', label: 'GLM-ASR-2512（≤30 秒）' },
+    { id: 'glm-asr', label: 'GLM-ASR（别名）' }
+  ],
+  dashscope: [
+    { id: 'qwen3-asr-flash', label: 'Qwen3-ASR-Flash（推荐，≤5 分钟）' },
+    { id: 'qwen-audio-3.0-asr-flash', label: 'Qwen-Audio-3.0-ASR-Flash' }
+  ],
+  deepseek: [{ id: 'default', label: '内置（跟语音钥匙共用）' }]
+}
 
 export const ASR_PROVIDERS: Array<{ value: AsrProvider; label: string; hint: string }> = [
   { value: 'siliconflow', label: '硅基流动', hint: 'SenseVoiceSmall，免费、国内直连' },
   { value: 'zhipu', label: '智谱', hint: 'GLM-ASR，免费额度，单段 ≤30 秒' },
+  { value: 'dashscope', label: '阿里云百炼', hint: 'Qwen3-ASR-Flash，有免费额度，单段 ≤5 分钟' },
   { value: 'deepseek', label: 'DeepSeek', hint: '原来的通道，跟语音钥匙共用一把 Key' }
 ]
 
 /** 边说边出的字幕（面板状态带上显示） */
 export type AsrPartial = { committed: string; partial: string }
+
+/** 面板打开时用来回填：明文只在主进程 ↔ 本应用页面之间走 */
+export type RevealedSecrets = { apiKey: string; asrKey: string }
 
 /* ---- 会话与模型（都来自 DSH，面板只做选择） ---- */
 export type ButlerSession = {
@@ -205,6 +224,8 @@ export type PublicSettings = {
   asrProvider: AsrProvider
   /** 当前厂商的识别 Key 配好了没 */
   hasAsrKey: boolean
+  /** 当前厂商下选的具体模型 */
+  asrModel: string
   /** 语音识别 / 合成用的 DeepSeek Key（对话不再用它） */
   hasKey: boolean
   baseUrl: string
@@ -224,6 +245,7 @@ export type SettingsPatch = {
   /** 识别厂商对应的 Key；空串表示清除 */
   asrApiKey?: string
   asrProvider?: AsrProvider
+  asrModel?: string
   baseUrl?: string
   micEnabled?: boolean
   ttsVoice?: 'stella' | 'tide'
