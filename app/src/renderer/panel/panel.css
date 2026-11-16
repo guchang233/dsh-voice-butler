@@ -1304,3 +1304,38 @@ button:disabled {
 .key-row .btn {
   flex: none;
 }
+/* 浮层提示：从顶部滑下来，几秒后自己消失 */
+.toast-float {
+  position: fixed;
+  left: 50%;
+  top: 14px;
+  z-index: 90;
+  transform: translateX(-50%);
+  max-width: 88%;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--c-ink);
+  color: var(--c-card);
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: 0 10px 26px rgb(0 0 0 / 22%);
+  animation: toast-in 180ms var(--ease-rise) both;
+  pointer-events: none;
+  word-break: break-word;
+}
+
+.toast-float.bad {
+  background: #b4442f;
+  color: #fff5f1;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}

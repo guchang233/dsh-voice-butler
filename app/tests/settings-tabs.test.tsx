@@ -18,7 +18,9 @@ const settings: PublicSettings = {
   ballPosition: null,
   wakeWord: '大肥鱼',
   micEnabled: true,
-  ttsVoice: 'stella',
+  ttsProvider: 'dashscope',
+  ttsModel: 'qwen3-tts-flash',
+  ttsVoice: 'Cherry',
   bargeIn: true,
   sessionId: 'session-probe',
   sessionTitle: '管家模式',
@@ -29,7 +31,7 @@ function render(): string {
   return renderToStaticMarkup(
     <SettingsView
       settings={settings}
-      notice={null}
+      onToast={() => {}}
       sessionId="session-probe"
       preset="butler"
       origin="http://127.0.0.1:1"

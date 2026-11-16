@@ -19,7 +19,8 @@ export default function App(): JSX.Element {
   const [items, setItems] = useState<Item[]>([])
   const [input, setInput] = useState('')
   const [view, setView] = useState<View>('chat')
-  const [notice, setNotice] = useState<string | null>(null)
+  // 提示走浮层：几秒后自己消失，不在页面里占位置
+  const [toast, setToast] = useState<{ text: string; kind: 'ok' | 'bad' } | null>(null)
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
   const [link, setLink] = useState<LinkState>('connecting')
   const [origin, setOrigin] = useState('')
@@ -129,6 +130,14 @@ export default function App(): JSX.Element {
     }
   }, [voiceState])
 
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 2800)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  const pushToast = (text: string, kind: 'ok' | 'bad' = 'ok'): void => setToast({ text, kind })
+
   const statusText = useMemo(() => {
     if (link === 'offline') return 'DSH 没连上'
     if (link === 'connecting') return '正在连 DSH…'
@@ -150,6 +159,7 @@ export default function App(): JSX.Element {
 
   return (
     <div className="shell">
+      {toast && <div className={toast.kind === 'bad' ? 'toast-float bad' : 'toast-float'}>{toast.text}</div>}
       <div className="card">
         <header className="site-header">
           <SkinImage className="avatar" />
@@ -221,13 +231,13 @@ export default function App(): JSX.Element {
         {view === 'settings' ? (
           <SettingsView
             settings={settings}
-            notice={notice}
+            onToast={pushToast}
             sessionId={sessionId}
             preset={preset}
             origin={origin}
             onSaved={(next, message) => {
               setSettings(next)
-              setNotice(message)
+              pushToast(message)
               setView('chat')
             }}
             onRefresh={refreshSettings}

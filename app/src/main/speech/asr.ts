@@ -29,6 +29,10 @@ export type TranscribeOptions = {
   model?: string
 }
 
+function who(provider: AsrProvider): string {
+  return provider === 'siliconflow' ? '硅基流动识别' : provider === 'dashscope' ? '阿里云百炼识别' : '语音识别'
+}
+
 function defaultModel(provider: AsrProvider): string {
   if (provider === 'siliconflow') return 'FunAudioLLM/SenseVoiceSmall'
   if (provider === 'dashscope') return 'qwen3-asr-flash'
@@ -75,12 +79,30 @@ export async function verifyAsrKey(
       ? `${SILICONFLOW_BASE}/models`
       : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/models`
 
-  const res = await fetch(url, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
-  })
+  const res = await guard(who(provider), VERIFY_TIMEOUT_MS, () =>
+    fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
+    }),
+  )
   if (!res.ok) throw new Error(await describe(provider, res))
+}
+
+/** 把「The operation was aborted due to timeout」这种翻成人话 */
+async function guard<T>(who: string, ms: number, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    const name = (error as { name?: string })?.name
+    const message = error instanceof Error ? error.message : String(error)
+    if (name === 'TimeoutError' || /aborted due to timeout/i.test(message)) {
+      throw new Error(`${who}没回应（${Math.round(ms / 1000)} 秒超时），检查网络或换一家再试`)
+    }
+    if (name === 'AbortError') throw new Error(`${who}请求被取消了`)
+    if (/fetch failed/i.test(message)) throw new Error(`${who}连不上，检查网络或代理`)
+    throw error
+  }
 }
 
 export async function transcribe(
@@ -104,12 +126,14 @@ export async function transcribe(
   if (provider !== 'deepseek') form.append('model', model)
   form.append('file', new Blob([new Uint8Array(wav)], { type: 'audio/wav' }), 'recording.wav')
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-    signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
-  })
+  const res = await guard(who(provider), TRANSCRIBE_TIMEOUT_MS, () =>
+    fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
+    }),
+  )
 
   if (!res.ok) throw new Error(await describe(provider, res))
   const raw = await res.text()
@@ -124,7 +148,8 @@ export async function transcribe(
 /** 百炼：OpenAI 兼容的多模态接口，音频用 base64 data URI 直接塞进去 */
 async function transcribeDashScope(apiKey: string, wav: Buffer, model: string): Promise<string> {
   const data = `data:audio/wav;base64,${wav.toString('base64')}`
-  const res = await fetch(`${DASHSCOPE_BASE}/compatible-mode/v1/chat/completions`, {
+  const res = await guard('阿里云百炼识别', TRANSCRIBE_TIMEOUT_MS, () =>
+    fetch(`${DASHSCOPE_BASE}/compatible-mode/v1/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -140,8 +165,9 @@ async function transcribeDashScope(apiKey: string, wav: Buffer, model: string): 
         },
       ],
     }),
-    signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
-  })
+      signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS),
+    }),
+  )
 
   if (!res.ok) throw new Error(await describe('dashscope', res))
   const raw = await res.text()

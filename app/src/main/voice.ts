@@ -6,7 +6,7 @@ import { overlaySetState, overlayToolEnd, overlayToolStart } from './overlay'
 import { transcribe } from './speech/asr'
 import { OnlineAsr } from './speech/online-asr'
 import { SentenceChunker, TtsQueue, TTS_SAMPLE_RATE } from './speech/tts'
-import { getApiKey, getAsrKey, getSettings } from './store'
+import { getApiKey, getAsrKey, getAsrKeyFor, getSettings } from './store'
 import { getBall, getPanel, showPanel } from './windows'
 import { approvalPrompt, decideVoiceApproval, isDangerousApproval, tooCloseToPrompt } from '../shared/confirm'
 import { IPC, type LinkState, type VoiceFrame, type VoiceState } from '../shared/ipc'
@@ -93,7 +93,16 @@ export class Voice {
 
   constructor() {
     this.tts = new TtsQueue(
-      () => ({ baseUrl: getSettings().baseUrl, apiKey: getApiKey(), voice: getSettings().ttsVoice }),
+      () => {
+        const settings = getSettings()
+        return {
+          provider: settings.ttsProvider,
+          baseUrl: settings.baseUrl,
+          apiKey: settings.ttsProvider === 'dashscope' ? getAsrKeyFor('dashscope') : getApiKey(),
+          voice: settings.ttsVoice,
+          model: settings.ttsModel
+        }
+      },
       (pcm) => {
         this.chunkCount += 1
         this.lastChunkAt = Date.now()

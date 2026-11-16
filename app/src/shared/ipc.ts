@@ -172,6 +172,34 @@ export const ASR_PROVIDERS: Array<{ value: AsrProvider; label: string; hint: str
 /** 边说边出的字幕（面板状态带上显示） */
 export type AsrPartial = { committed: string; partial: string }
 
+/** 语音合成厂商：DeepSeek（现有 PCM 流）/ 阿里云百炼（返回 WAV，剥头后同规格） */
+export type TtsProvider = 'deepseek' | 'dashscope'
+
+export const TTS_PROVIDERS: Array<{ value: TtsProvider; label: string; hint: string }> = [
+  { value: 'deepseek', label: 'DeepSeek', hint: '跟语音钥匙共用一把，返回 24k 裸 PCM' },
+  { value: 'dashscope', label: '阿里云百炼', hint: 'qwen3-tts，返回 24k WAV，音色更多' }
+]
+
+export const TTS_VOICES: Record<TtsProvider, Array<{ id: string; label: string }>> = {
+  deepseek: [
+    { id: 'stella', label: 'stella（女声）' },
+    { id: 'tide', label: 'tide（男声）' }
+  ],
+  dashscope: [
+    { id: 'Cherry', label: 'Cherry（女声·温柔）' },
+    { id: 'Serena', label: 'Serena（女声·知性）' },
+    { id: 'Ethan', label: 'Ethan（男声·阳光）' },
+    { id: 'Dylan', label: 'Dylan（男声·北京话）' },
+    { id: 'Jada', label: 'Jada（女声·上海话）' },
+    { id: 'Sunny', label: 'Sunny（女声·甜）' }
+  ]
+}
+
+export const TTS_MODELS: Record<TtsProvider, Array<{ id: string; label: string }>> = {
+  deepseek: [{ id: 'default', label: '内置' }],
+  dashscope: [{ id: 'qwen3-tts-flash', label: 'Qwen3-TTS-Flash' }]
+}
+
 /** 面板打开时用来回填：明文只在主进程 ↔ 本应用页面之间走 */
 export type RevealedSecrets = {
   apiKey: string
@@ -223,13 +251,17 @@ export type PublicSettings = {
   hasAsrKey: boolean
   /** 当前厂商下选的具体模型 */
   asrModel: string
+  /** 语音合成厂商 / 模型 / 音色 */
+  ttsProvider: TtsProvider
+  ttsModel: string
   /** 语音识别 / 合成用的 DeepSeek Key（对话不再用它） */
   hasKey: boolean
   baseUrl: string
   ballPosition: { x: number; y: number } | null
   wakeWord: string
   micEnabled: boolean
-  ttsVoice: 'stella' | 'tide'
+  /** 音色 id：DeepSeek 是 stella/tide，百炼是 Cherry 这类 */
+  ttsVoice: string
   bargeIn: boolean
   /** DSH 的那个管家会话 */
   sessionId: string | null
@@ -243,9 +275,11 @@ export type SettingsPatch = {
   asrApiKey?: string
   asrProvider?: AsrProvider
   asrModel?: string
+  ttsProvider?: TtsProvider
+  ttsModel?: string
   baseUrl?: string
   micEnabled?: boolean
-  ttsVoice?: 'stella' | 'tide'
+  ttsVoice?: string
   bargeIn?: boolean
   dshOrigin?: string
   theme?: ThemeMode

@@ -9,6 +9,9 @@ import {
   type EffectLevel,
   type SkinKey,
   type ThemeMode,
+  type TtsProvider,
+  TTS_MODELS,
+  TTS_VOICES,
 } from '../shared/ipc'
 
 /**
@@ -26,7 +29,11 @@ type Stored = {
   baseUrl: string
   ballPosition?: { x: number; y: number }
   micEnabled?: boolean
-  ttsVoice?: 'stella' | 'tide'
+  /** 音色 id：DeepSeek 是 stella/tide，百炼是 Cherry 这类 */
+  ttsVoice?: string
+  /** 语音合成厂商与模型 */
+  ttsProvider?: TtsProvider
+  ttsModel?: string
   bargeIn?: boolean
   /** 连续对话：一轮说完直接接着听 */
   continuous?: boolean
@@ -86,6 +93,22 @@ function normalizeTheme(value: unknown): ThemeMode {
  * `fallback` 是「没存过这个字段时该按谁算」：老用户手里只有 DeepSeek 钥匙，
  * 升级上来不能突然说「还没配识别 Key」——那种情况继续用 DeepSeek；新装才默认硅基流动。
  */
+function normalizeTtsProvider(value: unknown): TtsProvider {
+  return value === 'dashscope' ? 'dashscope' : 'deepseek'
+}
+
+function normalizeTtsVoice(provider: TtsProvider, value: unknown): string {
+  const ok = TTS_VOICES[provider].some((item) => item.id === value)
+  return ok ? String(value) : TTS_VOICES[provider][0]!.id
+}
+
+function resolveTtsModel(s: Stored): string {
+  const provider = normalizeTtsProvider(s.ttsProvider)
+  const stored = typeof s.ttsModel === 'string' ? s.ttsModel.trim() : ''
+  const allowed = TTS_MODELS[provider].map((item) => item.id)
+  return stored && allowed.includes(stored) ? stored : allowed[0]!
+}
+
 function normalizeAsrProvider(value: unknown, fallback: AsrProvider = 'siliconflow'): AsrProvider {
   if (value === 'siliconflow' || value === 'dashscope' || value === 'deepseek') {
     return value
@@ -167,7 +190,9 @@ export type PublicLike = {
   ballPosition: { x: number; y: number } | null
   wakeWord: string
   micEnabled: boolean
-  ttsVoice: 'stella' | 'tide'
+  ttsProvider: TtsProvider
+  ttsModel: string
+  ttsVoice: string
   bargeIn: boolean
   continuous: boolean
   skin: SkinKey
@@ -189,7 +214,9 @@ export function getSettings(): PublicLike {
     ballPosition: s.ballPosition ?? null,
     wakeWord: WAKE_WORD,
     micEnabled: s.micEnabled !== false,
-    ttsVoice: s.ttsVoice === 'tide' ? 'tide' : 'stella',
+    ttsProvider: normalizeTtsProvider(s.ttsProvider),
+    ttsModel: resolveTtsModel(s),
+    ttsVoice: normalizeTtsVoice(normalizeTtsProvider(s.ttsProvider), s.ttsVoice),
     bargeIn: s.bargeIn === true,
     continuous: s.continuous === true,
     skin: normalizeSkin(s.skin),
@@ -305,7 +332,11 @@ export function savePreferences(patch: {
   asrModel?: string
   baseUrl?: string
   micEnabled?: boolean
-  ttsVoice?: 'stella' | 'tide'
+  /** 音色 id：DeepSeek 是 stella/tide，百炼是 Cherry 这类 */
+  ttsVoice?: string
+  /** 语音合成厂商与模型 */
+  ttsProvider?: TtsProvider
+  ttsModel?: string
   bargeIn?: boolean
   continuous?: boolean
   skin?: SkinKey
@@ -321,6 +352,8 @@ export function savePreferences(patch: {
     v: 2,
     baseUrl: (patch.baseUrl ?? s.baseUrl).replace(/\/+$/, ''),
     micEnabled: patch.micEnabled ?? s.micEnabled,
+    ttsProvider: normalizeTtsProvider(patch.ttsProvider ?? s.ttsProvider),
+    ttsModel: patch.ttsModel ?? s.ttsModel,
     ttsVoice: patch.ttsVoice ?? s.ttsVoice,
     bargeIn: patch.bargeIn ?? s.bargeIn,
     continuous: patch.continuous ?? s.continuous === true,

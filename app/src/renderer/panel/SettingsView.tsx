@@ -4,6 +4,10 @@ import {
   ASR_MODELS,
   ASR_PROVIDERS,
   type AsrProvider,
+  type TtsProvider,
+  TTS_MODELS,
+  TTS_PROVIDERS,
+  TTS_VOICES,
   type ButlerModelCatalog,
   type ButlerSession,
   BALL_LEVELS,
@@ -20,7 +24,7 @@ type Tone = { kind: 'idle' | 'busy' | 'ok' | 'bad'; text: string }
 
 type Props = {
   settings: PublicSettings | null
-  notice: string | null
+  onToast: (text: string, kind?: 'ok' | 'bad') => void
   sessionId: string | null
   preset: string | null
   origin: string
@@ -41,7 +45,7 @@ const SET_TABS: Array<{ key: SetTab; label: string }> = [
 
 export default function SettingsView({
   settings,
-  notice,
+  onToast,
   sessionId,
   preset,
   origin,
@@ -51,7 +55,9 @@ export default function SettingsView({
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(settings?.baseUrl ?? 'https://api.deepseek.com')
   const [dshOrigin, setDshOrigin] = useState(settings?.dshOrigin ?? '')
-  const [voice, setVoice] = useState<'stella' | 'tide'>(settings?.ttsVoice ?? 'stella')
+  const [voice, setVoice] = useState<string>(settings?.ttsVoice ?? 'stella')
+  const [ttsProvider, setTtsProvider] = useState<TtsProvider>(settings?.ttsProvider ?? 'deepseek')
+  const [ttsModel, setTtsModel] = useState<string>(settings?.ttsModel ?? 'default')
   const [skin, setSkin] = useState<string>(settings?.skin ?? 'whale')
   const [bargeIn, setBargeIn] = useState(settings?.bargeIn ?? false)
   const [continuous, setContinuous] = useState(settings?.continuous ?? false)
@@ -114,7 +120,7 @@ export default function SettingsView({
   const loadSessions = async (): Promise<void> => {
     const result = await window.api.listSessions()
     if (!result.ok || !result.items) {
-      setLinkNote({ kind: 'bad', text: result.error ?? '读不到会话列表' })
+      onToast(result.error ?? '读不到会话列表', 'bad')
       return
     }
     setSessions(result.items)
@@ -125,7 +131,7 @@ export default function SettingsView({
   const loadModels = async (): Promise<void> => {
     const result = await window.api.listModels()
     if (!result.ok || !result.catalog) {
-      setLinkNote({ kind: 'bad', text: result.error ?? '读不到模型列表' })
+      onToast(result.error ?? '读不到模型列表', 'bad')
       return
     }
     setCatalog(result.catalog)
@@ -148,10 +154,9 @@ export default function SettingsView({
     setLinkBusy(true)
     const result = await window.api.switchSession(pickSession)
     setLinkBusy(false)
-    setLinkNote(
-      result.ok
-        ? { kind: 'ok', text: '已经切到这条会话，面板会重新拉一遍历史' }
-        : { kind: 'bad', text: result.error ?? '切换失败' }
+    onToast(
+      result.ok ? '已经切到这条会话' : (result.error ?? '切换失败'),
+      result.ok ? 'ok' : 'bad'
     )
     if (result.ok) await loadSessions()
   }
@@ -163,16 +168,15 @@ export default function SettingsView({
     setLinkBusy(true)
     const result = await window.api.selectModel(provider, model)
     setLinkBusy(false)
-    setLinkNote(
-      result.ok
-        ? { kind: 'ok', text: `管家现在用 ${model}` }
-        : { kind: 'bad', text: result.error ?? '选择失败' }
+    onToast(
+      result.ok ? '管家现在用 ' + model : (result.error ?? '选择失败'),
+      result.ok ? 'ok' : 'bad'
     )
     if (result.ok) await loadModels()
   }
 
   const save = async (): Promise<void> => {
-    setState({ kind: 'busy', text: '正在校验…' })
+
     const result = await window.api.saveSettings({
       apiKey: apiKey.trim() && apiKey.trim() !== loaded.current.apiKey ? apiKey.trim() : undefined,
       asrProvider,
@@ -185,16 +189,18 @@ export default function SettingsView({
       baseUrl: baseUrl.trim() || undefined,
       dshOrigin: dshOrigin.trim(),
       ttsVoice: voice,
+      ttsProvider,
+      ttsModel,
       bargeIn,
       continuous,
       theme,
       accent,
     })
     if (!result.ok) {
-      setState({ kind: 'bad', text: result.error })
+      onToast(result.error, 'bad')
       return
     }
-    setState({ kind: 'ok', text: '已保存' })
+    onToast('设置已保存')
     const next = await window.api.getSettings()
     onSaved(next, '设置已保存')
   }
@@ -240,7 +246,6 @@ export default function SettingsView({
 
   return (
     <div className="settings">
-      {notice && <div className="toast ok">{notice}</div>}
 
       <div className="set-tabs" role="tablist" aria-label="设置分类">
         {SET_TABS.map((item) => (
@@ -380,7 +385,6 @@ export default function SettingsView({
             </button>
           )}
         </div>
-        {state.text && <div className={state.kind === 'bad' ? 'toast bad' : 'toast ok'}>{state.text}</div>}
       </section>
 
       <section className="set-card" hidden={tab !== 'tts'}>
@@ -409,20 +413,54 @@ export default function SettingsView({
           </span>
         </label>
         <div className="field">
-          <span className="field-label">音色</span>
+          <span className="field-label">用哪家合成</span>
           <div className="seg-group">
-            {(['stella', 'tide'] as const).map((key) => (
+            {TTS_PROVIDERS.map((item) => (
               <button
-                key={key}
+                key={item.value}
                 type="button"
-                className={voice === key ? 'seg-item is-on' : 'seg-item'}
-                onClick={() => setVoice(key)}
+                className={ttsProvider === item.value ? 'seg-item is-on' : 'seg-item'}
+                onClick={() => {
+                  setTtsProvider(item.value)
+                  setTtsModel(TTS_MODELS[item.value][0]!.id)
+                  setVoice(TTS_VOICES[item.value][0]!.id)
+                }}
               >
-                {key === 'stella' ? 'stella（女声）' : 'tide（男声）'}
+                {item.label}
               </button>
             ))}
           </div>
+          <span className="field-hint">
+            {TTS_PROVIDERS.find((item) => item.value === ttsProvider)?.hint ?? ''}。
+            {ttsProvider === 'dashscope' ? '百炼用识别那把 Key，不用另配。' : ''}
+          </span>
         </div>
+
+        <label className="field">
+          <span className="field-label">合成模型</span>
+          <select
+            className="input"
+            value={ttsModel}
+            onChange={(event) => setTtsModel(event.target.value)}
+          >
+            {(TTS_MODELS[ttsProvider] ?? []).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field">
+          <span className="field-label">音色</span>
+          <select className="input" value={voice} onChange={(event) => setVoice(event.target.value)}>
+            {(TTS_VOICES[ttsProvider] ?? []).map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label className="field">
           <span className="field-label">语音接口地址</span>
@@ -448,7 +486,6 @@ export default function SettingsView({
             清除钥匙
           </button>
         </div>
-        {state.text && <div className={state.kind === 'bad' ? 'toast bad' : 'toast ok'}>{state.text}</div>}
       </section>
 
       <section className="set-card" hidden={tab !== 'look'}>
@@ -615,9 +652,6 @@ export default function SettingsView({
             </button>
           </div>
         </div>
-        {linkNote.text && (
-          <div className={linkNote.kind === 'bad' ? 'toast bad' : 'toast ok'}>{linkNote.text}</div>
-        )}
 
         <label className="field">
           <span className="field-label">DSH 地址</span>
@@ -679,9 +713,6 @@ export default function SettingsView({
           </button>
           <span className="persona-count">{persona.length} 字</span>
         </div>
-        {personaState.text && (
-          <div className={personaState.kind === 'bad' ? 'toast bad' : 'toast ok'}>{personaState.text}</div>
-        )}
       </section>
     </div>
   )
