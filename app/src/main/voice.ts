@@ -74,6 +74,8 @@ export class Voice {
   /** 这段时间内的音频直接丢（叫醒后跳过唤醒词尾巴） */
   private skipUntil = 0
   private spokenChars = 0
+  /** 最近念过的句子（同一句 60 秒内不再合成第二次：重复念=白花钱） */
+  private spokenRecent: Array<{ text: string; at: number }> = []
   private link: LinkState = 'connecting'
   private approval: { id: string; tool: string; reason: string } | null = null
   /** 连续对话：一轮说完直接接着听 */
@@ -499,9 +501,11 @@ export class Voice {
       }
       case 'reply': {
         const rest = this.chunker.flush()
+        logInfo('voice', `reply 帧 ${frame.text.trim().length} 字，已念 ${this.spokenChars} 字，剩余 ${rest ? rest.length : 0} 字`)
         if (rest) this.speak(rest)
         // 整段跳过流式（比如工具后直接给结论）时，一次念完
         if (this.spokenChars === 0 && frame.text.trim()) this.speak(frame.text)
+        else if (frame.text.trim()) logInfo('voice', 'reply 帧已流式念过，跳过整段')
         this.scheduleIdle()
         this.scheduleContinue()
         break
@@ -611,9 +615,30 @@ export class Voice {
 
   /* -------------------------------------------------------------- 出声 */
 
+  /** 同一句在短时间内被再次送来就跳过（重复念一遍 = 重复花钱） */
+  private isRepeat(clean: string): boolean {
+    const now = Date.now()
+    this.spokenRecent = this.spokenRecent.filter((item) => now - item.at < 60_000)
+    for (const item of this.spokenRecent) {
+      if (item.text === clean) return true
+      const short = item.text.length <= clean.length ? item.text : clean
+      const long = short === item.text ? clean : item.text
+      // 只有「较长的那句里整段包含较短这句、且短句本身也够长」才算重复，
+      // 免得把「好的」这种常用短语误判
+      if (short.length >= 12 && long.includes(short)) return true
+    }
+    return false
+  }
+
   private speak(text: string): void {
     const clean = text.trim()
     if (!clean) return
+    if (this.isRepeat(clean)) {
+      logInfo('voice', `跳过重复播报（${clean.length} 字）：${clean.slice(0, 24)}`)
+      return
+    }
+    this.spokenRecent.push({ text: clean, at: Date.now() })
+    logInfo('voice', `tts 合成 ${clean.length} 字：${clean.slice(0, 24)}`)
     this.spokenChars += clean.length
     this.startedSpeakingAt = Date.now()
     this.playbackIdle = false

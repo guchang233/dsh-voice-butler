@@ -15,7 +15,8 @@ describe('SentenceChunker', () => {
   })
 
   it('没有句号但超过上限也会切开', () => {
-    const chunker = new SentenceChunker(8, 10)
+    // 新契约：(min, maxSoft, maxHard) —— 硬切按 maxHard
+    const chunker = new SentenceChunker(4, 8, 10)
     const cut = chunker.push('一二三四五六七八九十甲')
     expect(cut[0]).toHaveLength(10)
     expect(chunker.flush()).toBe('甲')

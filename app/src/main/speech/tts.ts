@@ -26,12 +26,14 @@ export type TtsConfig = {
 type Sink = (pcm: Uint8Array) => void
 
 /** 把流式正文切成一句一句，句子边界才起播（原实现，不能丢） */
+/** 把流式正文切成适合合成的段落：强标点优先，长度不够才用弱标点，实在没有才硬切 */
 export class SentenceChunker {
   private buffer = ''
 
   constructor(
-    private readonly min = 8,
-    private readonly max = 42,
+    private readonly min = 6,
+    private readonly maxSoft = 18,
+    private readonly maxHard = 46,
   ) {}
 
   push(delta: string): string[] {
@@ -39,17 +41,37 @@ export class SentenceChunker {
     const out: string[] = []
     for (;;) {
       const chars = [...this.buffer]
-      const index = chars.findIndex((ch) => '。！？；!?;\n'.includes(ch))
-      if (index >= this.min) {
-        const sentence = chars.slice(0, index + 1).join('')
-        this.buffer = chars.slice(index + 1).join('')
-        out.push(sentence)
+
+      // 1) 强标点：句号问号叹号，够 min 就断，首句早点开口
+      const strong = chars.findIndex((ch) => '。！？!?'.includes(ch))
+      if (strong >= this.min) {
+        out.push(chars.slice(0, strong + 1).join(''))
+        this.buffer = chars.slice(strong + 1).join('')
         continue
       }
-      if (chars.length >= this.max) {
-        const sentence = chars.slice(0, this.max).join('')
-        this.buffer = chars.slice(this.max).join('')
-        out.push(sentence)
+
+      // 2) 弱标点：逗号分号冒号顿号，够长才断，免得一小截一小截地念
+      if (chars.length >= this.maxSoft) {
+        const weak = chars.findIndex((ch, index) => index >= this.min && '，,；;：:、'.includes(ch))
+        if (weak >= 0) {
+          out.push(chars.slice(0, weak + 1).join(''))
+          this.buffer = chars.slice(weak + 1).join('')
+          continue
+        }
+      }
+
+      // 3) 实在太长：在最后几个字里找最近的空格/顿号，找不到就硬切
+      if (chars.length >= this.maxHard) {
+        let cut = this.maxHard
+        for (let i = this.maxHard; i > this.maxHard - 8; i -= 1) {
+          const ch = chars[i]
+          if (ch && ' 、，'.includes(ch)) {
+            cut = i
+            break
+          }
+        }
+        out.push(chars.slice(0, cut).join(''))
+        this.buffer = chars.slice(cut).join('')
         continue
       }
       break
@@ -57,12 +79,34 @@ export class SentenceChunker {
     return out
   }
 
-  /** 收尾：把剩下的倒出来（原契约：返回字符串） */
+  /** 收尾：把剩下的倒出来（没有内容返回 null） */
   flush(): string | null {
     const rest = this.buffer.trim()
     this.buffer = ''
     return rest ? rest : null
   }
+}
+
+/**
+ * 每段 WAV 都是独立合成的：起止幅度不为零、还各自带一点首尾静音。
+ * 直接首尾相接就会在接缝处「啪」一声。这里砍掉首尾近静音，再做 6ms 淡入 / 12ms 淡出。
+ */
+export function shapeSegment(pcm: Int16Array): Int16Array {
+  const threshold = 328 // 约 -40 dBFS
+  let from = 0
+  let to = pcm.length
+  while (from < to && Math.abs(pcm[from]) < threshold) from += 1
+  while (to > from && Math.abs(pcm[to - 1]) < threshold) to -= 1
+  if (to - from < 480) return pcm
+  const out = pcm.slice(from, to)
+  const fadeIn = Math.min(Math.round(TTS_SAMPLE_RATE * 0.006), Math.floor(out.length / 4))
+  const fadeOut = Math.min(Math.round(TTS_SAMPLE_RATE * 0.012), Math.floor(out.length / 4))
+  for (let i = 0; i < fadeIn; i += 1) out[i] = Math.round(out[i] * (i / fadeIn))
+  for (let i = 0; i < fadeOut; i += 1) {
+    const index = out.length - 1 - i
+    out[index] = Math.round(out[index] * (i / fadeOut))
+  }
+  return out
 }
 
 export class TtsQueue {
@@ -158,7 +202,11 @@ export class TtsQueue {
     const audio = await fetch(url, { signal: AbortSignal.timeout(TTS_TIMEOUT_MS) })
     if (!audio.ok) throw new Error(`下载百炼音频失败（HTTP ${audio.status}）`)
     const bytes = new Uint8Array(await audio.arrayBuffer())
-    const pcm = stripWav(bytes)
+    const raw = stripWav(bytes)
+    // 起止淡入淡出 + 砍掉首尾静音：接缝处不会有开关声
+    const view = new Int16Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength))
+    const shaped = shapeSegment(view)
+    const pcm = new Uint8Array(shaped.buffer, shaped.byteOffset, shaped.byteLength)
     // 分成小块下发，播放器那边看起来跟流式一样
     const step = 8192
     for (let offset = 0; offset < pcm.length; offset += step) {
