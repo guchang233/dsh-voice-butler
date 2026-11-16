@@ -5,7 +5,8 @@ import { getBridge } from './bridge'
 import { importCustomSkin, listCustomSkins, removeCustomSkin, renameCustomSkin } from './customSkins'
 import { logError, logInfo } from './log'
 import { buildPeekData } from './peek'
-import { saveApiKey, savePreferences, getSettings } from './store'
+import { saveApiKey, saveAsrKey, savePreferences, getSettings } from './store'
+import { verifyAsrKey } from './speech/asr'
 import { syncOverlay } from './overlay'
 import { getVoice } from './voice'
 import {
@@ -36,6 +37,8 @@ const settingsPatch = z.object({
   effect: z.enum(['off', 'soft', 'vivid']).optional(),
   continuous: z.boolean().optional(),
   ballLevel: z.enum(['top', 'float', 'normal']).optional(),
+  asrProvider: z.enum(['siliconflow', 'zhipu', 'deepseek']).optional(),
+  asrApiKey: z.string().max(400).optional(),
 })
 
 /** 主题一改，三个窗口一起跟着变（CSS 里用的是 prefers-color-scheme） */
@@ -94,6 +97,21 @@ export function registerIpc(): void {
     if (!parsed.success) return { ok: false as const, error: '设置格式不正确' }
     const patch = parsed.data
 
+    // 识别厂商先定下来，后面的 Key 才知道存到谁名下
+    if (patch.asrProvider !== undefined) savePreferences({ asrProvider: patch.asrProvider })
+    if (patch.asrApiKey !== undefined) {
+      const provider = patch.asrProvider ?? getSettings().asrProvider
+      const trimmed = patch.asrApiKey.trim()
+      if (trimmed) {
+        try {
+          await verifyAsrKey(provider, trimmed, patch.baseUrl ?? getSettings().baseUrl)
+        } catch (error) {
+          return { ok: false as const, error: error instanceof Error ? error.message : '识别 Key 校验失败' }
+        }
+      }
+      saveAsrKey(provider, trimmed)
+    }
+
     if (patch.apiKey !== undefined && patch.apiKey.trim().length > 0) {
       const baseUrl = (patch.baseUrl ?? getSettings().baseUrl).replace(/\/+$/, '')
       try {
@@ -117,6 +135,7 @@ export function registerIpc(): void {
       effect: patch.effect,
       continuous: patch.continuous,
       ballLevel: patch.ballLevel,
+      asrProvider: patch.asrProvider,
     })
     if (patch.micEnabled !== undefined) getVoice().setMicEnabled(patch.micEnabled)
     if (patch.theme !== undefined) applyTheme(patch.theme)

@@ -5,6 +5,7 @@ import { useSkinTick } from '../shared/SkinImage'
 import { SkinImage } from '../shared/SkinImage'
 import ChatView from './ChatView'
 import SettingsView from './SettingsView'
+import type { AsrPartial } from '../../shared/ipc'
 import StatusStrip from './StatusStrip'
 import { applyFrame, nextId, type Item } from './thread'
 
@@ -119,17 +120,30 @@ export default function App(): JSX.Element {
     }
   }, [input])
 
+  // 边说边出的字幕：在听的时候把识别到的字铺出来，心里有数
+  const [caption, setCaption] = useState<AsrPartial>({ committed: '', partial: '' })
+  useEffect(() => window.api.onAsrPartial((payload) => setCaption(payload)), [])
+  useEffect(() => {
+    if (voiceState !== 'listening' && voiceState !== 'confirming') {
+      setCaption({ committed: '', partial: '' })
+    }
+  }, [voiceState])
+
   const statusText = useMemo(() => {
     if (link === 'offline') return 'DSH 没连上'
     if (link === 'connecting') return '正在连 DSH…'
-    if (voiceState === 'confirming') return '等你点头…'
-    if (voiceState === 'listening') return '在听你说…'
+    if (voiceState === 'listening' || voiceState === 'confirming') {
+      const heard = `${caption.committed}${caption.partial}`.trim()
+      if (heard) return heard
+      if (voiceState === 'confirming') return '等你点头…'
+      return '在听你说…'
+    }
     if (voiceState === 'speaking') return '正在说'
     if (phase === 'tool') return '在动这台电脑'
     if (voiceState === 'thinking' || phase === 'thinking') return '在想'
     if (!settings?.hasKey) return '还没配语音钥匙'
     return `说「${settings?.wakeWord ?? WAKE_WORD}」或按住话筒`
-  }, [link, voiceState, phase, settings])
+  }, [link, voiceState, phase, settings, caption])
 
   const busy = phase !== 'idle' || voiceState === 'thinking' || voiceState === 'speaking'
   const sessionLabel = preset ? `管家模式 · ${sessionId?.slice(-6) ?? '—'}` : (sessionId?.slice(-6) ?? '未连接')

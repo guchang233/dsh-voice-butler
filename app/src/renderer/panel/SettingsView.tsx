@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
 import {
+  ASR_PROVIDERS,
+  type AsrProvider,
   BALL_LEVELS,
   WAKE_WORD,
   type Accent,
@@ -43,6 +45,8 @@ export default function SettingsView({
   const [accent, setAccent] = useState<Accent>(settings?.accent ?? 'none')
   const [effect, setEffect] = useState<EffectLevel>(settings?.effect ?? 'vivid')
   const [ballLevel, setBallLevel] = useState<BallLevel>(settings?.ballLevel ?? 'top')
+  const [asrProvider, setAsrProvider] = useState<AsrProvider>(settings?.asrProvider ?? 'siliconflow')
+  const [asrKey, setAsrKey] = useState('')
   const [persona, setPersona] = useState('')
   const [personaIsDefault, setPersonaIsDefault] = useState(true)
   const [personaState, setPersonaState] = useState<Tone>({ kind: 'idle', text: '' })
@@ -59,6 +63,8 @@ export default function SettingsView({
     setState({ kind: 'busy', text: '正在校验…' })
     const result = await window.api.saveSettings({
       apiKey: apiKey.trim() || undefined,
+      asrProvider,
+      asrApiKey: asrKey.trim() || undefined,
       baseUrl: baseUrl.trim() || undefined,
       dshOrigin: dshOrigin.trim(),
       ttsVoice: voice,
@@ -74,6 +80,14 @@ export default function SettingsView({
     setState({ kind: 'ok', text: '已保存' })
     const next = await window.api.getSettings()
     onSaved(next, '设置已保存')
+  }
+
+  const clearAsrKey = async (): Promise<void> => {
+    const result = await window.api.saveSettings({ asrProvider, asrApiKey: '' })
+    if (result.ok) {
+      const next = await window.api.getSettings()
+      onSaved(next, '识别 Key 已清除')
+    }
   }
 
   const clearKey = async (): Promise<void> => {
@@ -172,6 +186,43 @@ export default function SettingsView({
             ))}
           </div>
         </div>
+        <div className="field">
+          <span className="field-label">语音识别</span>
+          <div className="seg-group">
+            {ASR_PROVIDERS.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={asrProvider === item.value ? 'seg-item is-on' : 'seg-item'}
+                onClick={() => setAsrProvider(item.value)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <span className="field-hint">
+            {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.hint ?? ''}
+            {asrProvider === 'deepseek' ? '（跟上面的语音钥匙共用一把 Key）' : '，Key 在对应厂商控制台免费创建。'}
+          </span>
+        </div>
+
+        {asrProvider !== 'deepseek' && (
+          <label className="field">
+            <span className="field-label">
+              {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.label ?? ''} 识别 Key
+            </span>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings?.hasAsrKey ? '已配置，留空表示不修改' : 'sk-…'}
+              value={asrKey}
+              onChange={(event) => setAsrKey(event.target.value)}
+              spellCheck={false}
+            />
+            <span className="field-hint">只想清掉它：点下面的「清除识别 Key」。</span>
+          </label>
+        )}
+
         <label className="field">
           <span className="field-label">语音接口地址</span>
           <input
@@ -191,6 +242,16 @@ export default function SettingsView({
             {state.kind === 'busy' ? <Loader2 size={15} className="spin" /> : <Check size={15} strokeWidth={2} />}
             保存并校验
           </button>
+          {asrProvider !== 'deepseek' && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void clearAsrKey()}
+              disabled={!settings?.hasAsrKey}
+            >
+              清除识别 Key
+            </button>
+          )}
           <button type="button" className="btn btn-ghost" onClick={() => void clearKey()} disabled={!settings?.hasKey}>
             清除钥匙
           </button>

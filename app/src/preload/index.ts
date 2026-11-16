@@ -3,6 +3,7 @@ import {
   IPC,
   type LinkState,
   type OverlayPayload,
+  type AsrPartial,
   type PeekData,
   type PublicSettings,
   type Result,
@@ -110,6 +111,7 @@ const api: ButlerApi = {
 
   onPanelShown: (handler) => subscribe<null>(IPC.panelShown, () => handler()),
   onBallHover: (handler) => subscribe<boolean>(IPC.ballHover, handler),
+  onAsrPartial: (handler) => subscribe<AsrPartial>(IPC.asrPartial, handler),
   onVoiceState: (handler) => subscribe<{ state: VoiceState }>(IPC.voiceState, handler),
   onLinkState: (handler) => subscribe<{ link: LinkState; origin: string }>(IPC.linkState, handler),
   onMicLevel: (handler) => subscribe<number>(IPC.micLevel, handler),

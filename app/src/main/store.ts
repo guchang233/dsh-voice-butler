@@ -1,7 +1,15 @@
 import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { WAKE_WORD, type Accent, type BallLevel, type EffectLevel, type SkinKey, type ThemeMode } from '../shared/ipc'
+import {
+  WAKE_WORD,
+  type Accent,
+  type AsrProvider,
+  type BallLevel,
+  type EffectLevel,
+  type SkinKey,
+  type ThemeMode,
+} from '../shared/ipc'
 
 /**
  * 落盘结构。
@@ -32,6 +40,10 @@ type Stored = {
   effect?: EffectLevel
   /** 悬浮球层级：最上层 / 普通置顶 / 不置顶 */
   ballLevel?: BallLevel
+  /** 语音识别厂商 */
+  asrProvider?: AsrProvider
+  /** 各厂商的识别 Key（base64，enc 说明是否 safeStorage 加密过） */
+  asrKeys?: Partial<Record<AsrProvider, { value: string; enc: boolean }>>
   /** 手动指定的 DSH 地址；留空则读 endpoint.json */
   dshOrigin?: string
 }
@@ -48,6 +60,7 @@ const DEFAULTS: Stored = {
   accent: 'none',
   effect: 'vivid',
   ballLevel: 'top',
+  asrProvider: 'siliconflow',
 }
 
 /**
@@ -63,6 +76,17 @@ function normalizeSkin(value: unknown): SkinKey {
 
 function normalizeTheme(value: unknown): ThemeMode {
   return value === 'light' || value === 'dark' ? value : 'system'
+}
+
+/**
+ * 识别厂商。
+ *
+ * `fallback` 是「没存过这个字段时该按谁算」：老用户手里只有 DeepSeek 钥匙，
+ * 升级上来不能突然说「还没配识别 Key」——那种情况继续用 DeepSeek；新装才默认硅基流动。
+ */
+function normalizeAsrProvider(value: unknown, fallback: AsrProvider = 'siliconflow'): AsrProvider {
+  if (value === 'siliconflow' || value === 'zhipu' || value === 'deepseek') return value
+  return fallback
 }
 
 function normalizeAccent(value: unknown): Accent {
@@ -109,6 +133,8 @@ function read(): Stored {
       accent: normalizeAccent(parsed.accent),
       effect: normalizeEffect(parsed.effect),
       ballLevel: normalizeBallLevel(parsed.ballLevel),
+      asrProvider: normalizeAsrProvider(parsed.asrProvider, parsed.apiKey ? 'deepseek' : 'siliconflow'),
+      asrKeys: parsed.asrKeys,
       dshOrigin: typeof parsed.dshOrigin === 'string' ? parsed.dshOrigin : undefined,
     }
   } catch {
@@ -129,6 +155,8 @@ function write(next: Stored): void {
 
 export type PublicLike = {
   hasKey: boolean
+  asrProvider: AsrProvider
+  hasAsrKey: boolean
   baseUrl: string
   ballPosition: { x: number; y: number } | null
   wakeWord: string
@@ -148,6 +176,8 @@ export function getSettings(): PublicLike {
   const s = read()
   return {
     hasKey: !!s.apiKey,
+    asrProvider: normalizeAsrProvider(s.asrProvider),
+    hasAsrKey: !!getAsrKey(),
     baseUrl: s.baseUrl,
     ballPosition: s.ballPosition ?? null,
     wakeWord: WAKE_WORD,
@@ -196,7 +226,40 @@ export function saveApiKey(key: string): void {
   }
 }
 
+/** 当前识别厂商的明文 Key（只在主进程内用） */
+export function getAsrKey(): string {
+  const s = read()
+  const provider = normalizeAsrProvider(s.asrProvider)
+  const sealed = s.asrKeys?.[provider]
+  if (!sealed?.value) return ''
+  try {
+    const buf = Buffer.from(sealed.value, 'base64')
+    if (sealed.enc && safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(buf)
+    return buf.toString('utf8')
+  } catch {
+    return ''
+  }
+}
+
+/** 给某个厂商存/清识别 Key；key 为空串就是清除 */
+export function saveAsrKey(provider: AsrProvider, key: string): void {
+  const s = read()
+  const keys = { ...(s.asrKeys ?? {}) }
+  const trimmed = key.trim()
+  if (!trimmed) {
+    delete keys[provider]
+    write({ ...s, v: 2, asrKeys: keys })
+    return
+  }
+  const sealed = safeStorage.isEncryptionAvailable()
+    ? { value: safeStorage.encryptString(trimmed).toString('base64'), enc: true }
+    : { value: Buffer.from(trimmed, 'utf8').toString('base64'), enc: false }
+  keys[provider] = sealed
+  write({ ...s, v: 2, asrKeys: keys })
+}
+
 export function savePreferences(patch: {
+  asrProvider?: AsrProvider
   baseUrl?: string
   micEnabled?: boolean
   ttsVoice?: 'stella' | 'tide'
@@ -223,6 +286,7 @@ export function savePreferences(patch: {
     accent: normalizeAccent(patch.accent ?? s.accent),
     effect: normalizeEffect(patch.effect ?? s.effect),
     ballLevel: normalizeBallLevel(patch.ballLevel ?? s.ballLevel),
+    asrProvider: normalizeAsrProvider(patch.asrProvider ?? s.asrProvider),
     dshOrigin: patch.dshOrigin ?? s.dshOrigin,
   })
 }

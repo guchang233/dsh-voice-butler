@@ -1,11 +1,12 @@
-import { createEndpointer, encodeWavFromInt16, rms, SAMPLE_RATE } from './audio/vad'
+import { createEndpointer, rms, SAMPLE_RATE } from './audio/vad'
 import { createKeywordWatcher, WAKE_WORD_TEXT, type KeywordWatcher } from './audio/kws'
 import { getBridge } from './bridge'
 import { logError, logInfo } from './log'
 import { overlaySetState, overlayToolEnd, overlayToolStart } from './overlay'
 import { transcribe } from './speech/asr'
+import { OnlineAsr } from './speech/online-asr'
 import { SentenceChunker, TtsQueue, TTS_SAMPLE_RATE } from './speech/tts'
-import { getApiKey, getSettings } from './store'
+import { getApiKey, getAsrKey, getSettings } from './store'
 import { getBall, getPanel, showPanel } from './windows'
 import { approvalPrompt, decideVoiceApproval, isDangerousApproval, tooCloseToPrompt } from '../shared/confirm'
 import { IPC, type LinkState, type VoiceFrame, type VoiceState } from '../shared/ipc'
@@ -49,6 +50,8 @@ type Capture = {
 export class Voice {
   /** 待机时用的唤醒词引擎（标准灵敏度） */
   private watcher: KeywordWatcher | null = null
+  /** 伪流式识别：边说边出字幕，收尾再整段重识别 */
+  private readonly asr: OnlineAsr
   /** 播报 / 思考时用的引擎：门限更低，方便一句话把管家打断 */
   private bargeWatcher: KeywordWatcher | null = null
   private endpointer = createEndpointer({ maxMs: MAX_UTTERANCE_MS })
@@ -105,7 +108,21 @@ export class Voice {
       },
       (error) => logError('tts', error),
     )
+    this.asr = new OnlineAsr(async (wav) => {
+      const settings = getSettings()
+      const provider = settings.asrProvider
+      const key = provider === 'deepseek' ? getApiKey() : getAsrKey()
+      if (!key) {
+        throw new Error(provider === 'deepseek' ? '还没有配置语音钥匙' : '还没有配置语音识别的 Key')
+      }
+      return transcribe(provider, key, wav, settings.baseUrl)
+    })
+    this.asr.onUpdate((shown) => {
+      if (this.state !== 'listening' && this.state !== 'confirming') return
+      this.send(IPC.asrPartial, shown)
+    })
   }
+
 
   start(): void {
     this.watcher = createKeywordWatcher({ label: 'kws' })
@@ -163,6 +180,7 @@ export class Voice {
   private toIdle(): void {
     this.utterance = []
     this.endpointer.reset()
+    this.asr.reset()
     if (this.capture) {
       const capture = this.capture
       this.capture = null
@@ -213,18 +231,29 @@ export class Voice {
         logInfo('voice', 'listening 中又喊了唤醒词：重新收音')
         this.utterance = []
         this.endpointer.reset()
+        this.asr.reset()
         this.triggerWake(keyword)
         return
       }
       this.utterance.push(chunk)
+      this.asr.push(chunk)
       const result = this.endpointer.push(chunk)
+      if (this.endpointer.speechStarted) {
+        this.asr.markHeard()
+        this.asr.kick()
+      }
       if (result.done) void this.finishUtterance(result.reason)
       return
     }
 
     if (this.state === 'confirming') {
       this.utterance.push(chunk)
+      this.asr.push(chunk)
       const result = this.endpointer.push(chunk)
+      if (this.endpointer.speechStarted) {
+        this.asr.markHeard()
+        this.asr.kick()
+      }
       if (result.done) void this.finishUtterance(result.reason)
       return
     }
@@ -272,6 +301,7 @@ export class Voice {
    */
   private beginListening(skipMs = 0): void {
     this.endpointer.reset()
+    this.asr.reset()
     this.utterance = []
     this.skipUntil = skipMs > 0 ? Date.now() + skipMs : 0
     this.bargeWatcher?.reset()
@@ -318,19 +348,22 @@ export class Voice {
 
     this.setState('thinking')
     const settings = getSettings()
-    const apiKey = getApiKey()
-    if (!apiKey) {
+    const needsKey = settings.asrProvider === 'deepseek' ? getApiKey() : getAsrKey()
+    if (!needsKey) {
       this.toIdle()
       this.send(IPC.voiceState, { state: 'error' })
-      this.speakNow('还没配语音钥匙，打开面板填一下。')
+      this.speakNow(
+        settings.asrProvider === 'deepseek'
+          ? '还没配语音钥匙，打开面板填一下。'
+          : '还没配语音识别的 Key，打开面板填一下。'
+      )
       return
     }
 
     let text = ''
     try {
-      const wav = encodeWavFromInt16(chunks)
       logInfo('voice', `utterance ${Math.round(totalMs)}ms reason=${reason ?? '-'} -> asr`)
-      text = await transcribe(settings.baseUrl, apiKey, wav)
+      text = await this.asr.finish()
       logInfo('voice', 'asr: ' + text)
     } catch (error) {
       logError('asr', error)

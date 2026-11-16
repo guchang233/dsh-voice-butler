@@ -1,4 +1,5 @@
 import type {
+  AsrPartial,
   LinkState,
   OverlayPayload,
   PeekData,
@@ -80,6 +81,8 @@ export type ButlerApi = {
 
   onPanelShown: (handler: () => void) => Unsubscribe
   onBallHover: (handler: (inside: boolean) => void) => Unsubscribe
+  /** 边说边出的字幕（面板状态带上显示） */
+  onAsrPartial: (handler: (payload: AsrPartial) => void) => Unsubscribe
   onVoiceState: (handler: (payload: { state: VoiceState }) => void) => Unsubscribe
   onLinkState: (handler: (payload: { link: LinkState; origin: string }) => void) => Unsubscribe
   onMicLevel: (handler: (level: number) => void) => Unsubscribe

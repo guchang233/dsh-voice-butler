@@ -53,6 +53,7 @@ export const IPC = {
   /* 与 DSH 的桥 */
   linkState: 'link:state',
   voiceSay: 'voice:say',
+  asrPartial: 'asr:partial',
   voiceStop: 'voice:stop',
   voiceApprove: 'voice:approve',
   voiceNew: 'voice:new',
@@ -146,6 +147,18 @@ export const BALL_LEVELS: Array<{ value: BallLevel; label: string; hint: string 
   { value: 'normal', label: '不置顶', hint: '和普通窗口一样，切到别的程序就会被挡住' },
 ]
 
+/** 语音识别厂商：两家都有免费额度 */
+export type AsrProvider = 'siliconflow' | 'zhipu' | 'deepseek'
+
+export const ASR_PROVIDERS: Array<{ value: AsrProvider; label: string; hint: string }> = [
+  { value: 'siliconflow', label: '硅基流动', hint: 'SenseVoiceSmall，免费、国内直连' },
+  { value: 'zhipu', label: '智谱', hint: 'GLM-ASR，免费额度，单段 ≤30 秒' },
+  { value: 'deepseek', label: 'DeepSeek', hint: '原来的通道，跟语音钥匙共用一把 Key' }
+]
+
+/** 边说边出的字幕（面板状态带上显示） */
+export type AsrPartial = { committed: string; partial: string }
+
 export type PublicSettings = {
   skin: SkinKey
   /** 界面主题（面板 / 悬浮球 / 顶层特效一起换） */
@@ -158,6 +171,10 @@ export type PublicSettings = {
   continuous: boolean
   /** 悬浮球的窗口层级 */
   ballLevel: BallLevel
+  /** 语音识别厂商 */
+  asrProvider: AsrProvider
+  /** 当前厂商的识别 Key 配好了没 */
+  hasAsrKey: boolean
   /** 语音识别 / 合成用的 DeepSeek Key（对话不再用它） */
   hasKey: boolean
   baseUrl: string
@@ -174,6 +191,9 @@ export type PublicSettings = {
 
 export type SettingsPatch = {
   apiKey?: string
+  /** 识别厂商对应的 Key；空串表示清除 */
+  asrApiKey?: string
+  asrProvider?: AsrProvider
   baseUrl?: string
   micEnabled?: boolean
   ttsVoice?: 'stella' | 'tide'
