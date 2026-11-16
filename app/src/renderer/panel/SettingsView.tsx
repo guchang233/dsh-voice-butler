@@ -156,6 +156,70 @@ export default function SettingsView({
       </section>
 
       <section className="set-card">
+        <h2>语音识别</h2>
+        <div className="field">
+          <span className="field-label">用哪家识别</span>
+          <div className="seg-group">
+            {ASR_PROVIDERS.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={asrProvider === item.value ? 'seg-item is-on' : 'seg-item'}
+                onClick={() => setAsrProvider(item.value)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <span className="field-hint">
+            {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.hint ?? ''}。
+            {asrProvider === 'deepseek' ? '' : 'Key 在对应厂商控制台免费创建。'}
+            说话过程中先给你看实时字幕，说完再整段重识别一次。
+          </span>
+        </div>
+
+        {asrProvider !== 'deepseek' && (
+          <label className="field">
+            <span className="field-label">
+              {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.label ?? ''} 识别 Key
+            </span>
+            <input
+              className="input"
+              type="password"
+              placeholder={settings?.hasAsrKey ? '已配置，留空表示不修改' : 'sk-…'}
+              value={asrKey}
+              onChange={(event) => setAsrKey(event.target.value)}
+              spellCheck={false}
+            />
+            <span className="field-hint">改完点下面的「保存并校验」，会先查一次模型列表，不花识别额度。</span>
+          </label>
+        )}
+
+        <div className="row-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void save()}
+            disabled={state.kind === 'busy'}
+          >
+            {state.kind === 'busy' ? <Loader2 size={15} className="spin" /> : <Check size={15} strokeWidth={2} />}
+            保存并校验
+          </button>
+          {asrProvider !== 'deepseek' && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void clearAsrKey()}
+              disabled={!settings?.hasAsrKey}
+            >
+              清除识别 Key
+            </button>
+          )}
+        </div>
+        {state.text && <div className={state.kind === 'bad' ? 'toast bad' : 'toast ok'}>{state.text}</div>}
+      </section>
+
+      <section className="set-card">
         <h2>语音</h2>
         <label className="field">
           <span className="field-label">语音钥匙（只用于听写和朗读）</span>
@@ -186,42 +250,6 @@ export default function SettingsView({
             ))}
           </div>
         </div>
-        <div className="field">
-          <span className="field-label">语音识别</span>
-          <div className="seg-group">
-            {ASR_PROVIDERS.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                className={asrProvider === item.value ? 'seg-item is-on' : 'seg-item'}
-                onClick={() => setAsrProvider(item.value)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <span className="field-hint">
-            {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.hint ?? ''}
-            {asrProvider === 'deepseek' ? '' : '，Key 在对应厂商控制台免费创建。'}
-          </span>
-        </div>
-
-        {asrProvider !== 'deepseek' && (
-          <label className="field">
-            <span className="field-label">
-              {ASR_PROVIDERS.find((item) => item.value === asrProvider)?.label ?? ''} 识别 Key
-            </span>
-            <input
-              className="input"
-              type="password"
-              placeholder={settings?.hasAsrKey ? '已配置，留空表示不修改' : 'sk-…'}
-              value={asrKey}
-              onChange={(event) => setAsrKey(event.target.value)}
-              spellCheck={false}
-            />
-            <span className="field-hint">只想清掉它：点下面的「清除识别 Key」。</span>
-          </label>
-        )}
 
         <label className="field">
           <span className="field-label">语音接口地址</span>
@@ -242,16 +270,7 @@ export default function SettingsView({
             {state.kind === 'busy' ? <Loader2 size={15} className="spin" /> : <Check size={15} strokeWidth={2} />}
             保存并校验
           </button>
-          {asrProvider !== 'deepseek' && (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => void clearAsrKey()}
-              disabled={!settings?.hasAsrKey}
-            >
-              清除识别 Key
-            </button>
-          )}
+
           <button type="button" className="btn btn-ghost" onClick={() => void clearKey()} disabled={!settings?.hasKey}>
             清除钥匙
           </button>
