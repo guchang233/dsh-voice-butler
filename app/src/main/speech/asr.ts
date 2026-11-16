@@ -35,18 +35,45 @@ function defaultModel(provider: AsrProvider): string {
   return 'default'
 }
 
-/** 确认 Key 有效且不消耗识别额度：前两家查模型列表，百炼走 OpenAI 兼容的 /models */
+/** 0.5 秒静音 WAV：校验时用，费用约 0.0001 元 */
+function silenceWav(): Buffer {
+  const samples = 8000
+  const buf = Buffer.alloc(44 + samples * 2)
+  buf.write('RIFF', 0, 'ascii')
+  buf.writeUInt32LE(36 + samples * 2, 4)
+  buf.write('WAVE', 8, 'ascii')
+  buf.write('fmt ', 12, 'ascii')
+  buf.writeUInt32LE(16, 16)
+  buf.writeUInt16LE(1, 20)
+  buf.writeUInt16LE(1, 22)
+  buf.writeUInt32LE(16000, 24)
+  buf.writeUInt32LE(32000, 28)
+  buf.writeUInt16LE(2, 32)
+  buf.writeUInt16LE(16, 34)
+  buf.write('data', 36, 'ascii')
+  buf.writeUInt32LE(samples * 2, 40)
+  return buf
+}
+
+/**
+ * 确认能真正用起来。
+ *
+ * 硅基流动 / DeepSeek 查模型列表（免费）；百炼的 /models 有时能过、真实识别却缺参数，
+ * 所以百炼直接跑一次 0.5 秒静音识别——能出文本就说明 Key、模型、请求格式全对。
+ */
 export async function verifyAsrKey(
   provider: AsrProvider,
   apiKey: string,
   options?: TranscribeOptions
 ): Promise<void> {
+  if (provider === 'dashscope') {
+    await transcribe(provider, apiKey, silenceWav(), options)
+    return
+  }
   const url =
     provider === 'siliconflow'
       ? `${SILICONFLOW_BASE}/models`
-      : provider === 'dashscope'
-        ? `${DASHSCOPE_BASE}/compatible-mode/v1/models`
-        : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/models`
+      : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/models`
 
   const res = await fetch(url, {
     method: 'GET',

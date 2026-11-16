@@ -237,7 +237,14 @@ export function saveApiKey(key: string): void {
 export function resolveAsrModel(s: Stored = read()): string {
   const provider = normalizeAsrProvider(s.asrProvider)
   const stored = typeof s.asrModel === 'string' ? s.asrModel.trim() : ''
-  if (stored) return stored
+  // 存的模型必须是这一家的，否则回落（换厂商后残留的旧模型会让校验/识别都跑不通）
+  const allowed =
+    provider === 'siliconflow'
+      ? ['FunAudioLLM/SenseVoiceSmall']
+      : provider === 'dashscope'
+        ? ['qwen3-asr-flash']
+        : ['default']
+  if (stored && allowed.includes(stored)) return stored
   return provider === 'siliconflow'
     ? 'FunAudioLLM/SenseVoiceSmall'
     : provider === 'dashscope'

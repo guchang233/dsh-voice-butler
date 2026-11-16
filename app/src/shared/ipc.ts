@@ -159,10 +159,7 @@ export type AsrProvider = 'siliconflow' | 'dashscope' | 'deepseek'
 export const ASR_MODELS: Record<AsrProvider, Array<{ id: string; label: string }>> = {
   siliconflow: [{ id: 'FunAudioLLM/SenseVoiceSmall', label: 'SenseVoiceSmall（免费）' }],
 
-  dashscope: [
-    { id: 'qwen3-asr-flash', label: 'Qwen3-ASR-Flash（推荐，≤5 分钟）' },
-    { id: 'qwen-audio-3.0-asr-flash', label: 'Qwen-Audio-3.0-ASR-Flash' }
-  ],
+  dashscope: [{ id: 'qwen3-asr-flash', label: 'Qwen3-ASR-Flash（≤5 分钟）' }],
   deepseek: [{ id: 'default', label: '内置（跟语音钥匙共用）' }]
 }
 

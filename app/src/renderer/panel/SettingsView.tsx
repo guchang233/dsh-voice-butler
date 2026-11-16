@@ -83,12 +83,13 @@ export default function SettingsView({
     })
   }, [])
 
+  // 换厂商就落到该家的模型上：以前是「不合法才换」，结果残留了上一家的模型名，
+  // 保存时把 siliconflow 的模型写给了百炼，校验/识别都跑不通
   useEffect(() => {
-    if (!settings) return
     const list = ASR_MODELS[asrProvider] ?? []
-    const keep = list.some((item) => item.id === asrModel)
-    if (!keep) setAsrModel(list[0]?.id ?? '')
-  }, [asrProvider, settings])
+    if (list.length === 0) return
+    if (!list.some((item) => item.id === asrModel)) setAsrModel(list[0].id)
+  }, [asrProvider, asrModel])
 
   useEffect(() => {
     void window.api.getPersona().then((result) => {
