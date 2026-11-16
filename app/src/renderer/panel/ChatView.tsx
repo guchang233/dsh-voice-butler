@@ -250,10 +250,15 @@ function VirtualThread({
   while (end < rows.length && (offsets[end] ?? 0) < scroll + viewport + 160) end += 1
   if (end === start) end = Math.min(rows.length, start + 1)
 
+  // 贴底才跟着滚：以前每次 stick 变化都硬把 scrollTop 拉到底，
+  // 跟用户自己的滚动打架，表现就是到最底端时一顿抽搐
+  const stickRef = useRef(true)
+  const rafRef = useRef(0)
+
   useEffect(() => {
     const node = ref.current
     if (!node) return
-    node.scrollTop = node.scrollHeight
+    if (stickRef.current) node.scrollTop = node.scrollHeight
     setViewport(node.clientHeight || 360)
   }, [stick])
 
@@ -262,8 +267,16 @@ function VirtualThread({
       className="thread"
       ref={ref}
       onScroll={(event) => {
-        setScroll(event.currentTarget.scrollTop)
-        setViewport(event.currentTarget.clientHeight)
+        const node = event.currentTarget
+        stickRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24
+        if (rafRef.current) return
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = 0
+          const el = ref.current
+          if (!el) return
+          setScroll(el.scrollTop)
+          setViewport(el.clientHeight)
+        })
       }}
     >
       {rows.length === 0 ? (

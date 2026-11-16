@@ -25,6 +25,17 @@ type Props = {
   onRefresh: () => Promise<void>
 }
 
+type SetTab = 'asr' | 'tts' | 'chat' | 'look' | 'dsh' | 'persona'
+
+const SET_TABS: Array<{ key: SetTab; label: string }> = [
+  { key: 'asr', label: '语音识别' },
+  { key: 'tts', label: '语音合成' },
+  { key: 'chat', label: '对话' },
+  { key: 'look', label: '外观' },
+  { key: 'dsh', label: 'DSH' },
+  { key: 'persona', label: '人格' }
+]
+
 export default function SettingsView({
   settings,
   notice,
@@ -45,6 +56,7 @@ export default function SettingsView({
   const [accent, setAccent] = useState<Accent>(settings?.accent ?? 'none')
   const [effect, setEffect] = useState<EffectLevel>(settings?.effect ?? 'vivid')
   const [ballLevel, setBallLevel] = useState<BallLevel>(settings?.ballLevel ?? 'top')
+  const [tab, setTab] = useState<SetTab>(settings ? 'asr' : 'asr')
   const [asrProvider, setAsrProvider] = useState<AsrProvider>(settings?.asrProvider ?? 'siliconflow')
   const [asrKey, setAsrKey] = useState('')
   const [persona, setPersona] = useState('')
@@ -131,7 +143,7 @@ export default function SettingsView({
     <div className="settings">
       {notice && <div className="toast ok">{notice}</div>}
 
-      <section className="set-card">
+      <section className="set-card" hidden={tab !== 'chat'}>
         <h2>对话</h2>
         <label className="switch-row">
           <span>
@@ -161,7 +173,7 @@ export default function SettingsView({
         </label>
       </section>
 
-      <section className="set-card">
+      <section className="set-card" hidden={tab !== 'asr'}>
         <h2>语音识别</h2>
         <div className="field">
           <span className="field-label">用哪家识别</span>
@@ -225,7 +237,7 @@ export default function SettingsView({
         {state.text && <div className={state.kind === 'bad' ? 'toast bad' : 'toast ok'}>{state.text}</div>}
       </section>
 
-      <section className="set-card">
+      <section className="set-card" hidden={tab !== 'tts'}>
         <h2>语音</h2>
         <label className="field">
           <span className="field-label">语音钥匙（只用于听写和朗读）</span>
@@ -284,7 +296,7 @@ export default function SettingsView({
         {state.text && <div className={state.kind === 'bad' ? 'toast bad' : 'toast ok'}>{state.text}</div>}
       </section>
 
-      <section className="set-card">
+      <section className="set-card" hidden={tab !== 'look'}>
         <h2>外观</h2>
         <div className="field">
           <span className="field-label">界面主题</span>
@@ -393,7 +405,7 @@ export default function SettingsView({
         </div>
       </section>
 
-      <section className="set-card">
+      <section className="set-card" hidden={tab !== 'dsh'}>
         <h2>DSH 连接</h2>
         <label className="field">
           <span className="field-label">DSH 地址</span>
@@ -428,7 +440,7 @@ export default function SettingsView({
         </dl>
       </section>
 
-      <section className="set-card">
+      <section className="set-card" hidden={tab !== 'persona'}>
         <h2>人格</h2>
         <textarea
           className="persona-box"

@@ -253,6 +253,8 @@ button:disabled {
 /* ------------------------------------------------------------------ 对话 */
 
 .thread {
+  /* 虚拟列表 + 浏览器滚动锚定会互相打架，到最底端时抽一下 */
+  overflow-anchor: none;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -1239,4 +1241,51 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* 设置页顶部的标签栏（以前是一叠卡片，翻找很累） */
+.set-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  background: var(--c-raised);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: none;
+}
+
+.set-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.set-tab {
+  flex: 1 0 auto;
+  min-width: 62px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--c-muted);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 160ms var(--ease-rise), color 160ms var(--ease-rise);
+}
+
+.set-tab:hover {
+  color: var(--c-ink);
+}
+
+.set-tab.is-on {
+  background: var(--c-card);
+  color: var(--c-ink);
+  box-shadow: var(--shadow-seg);
+}
+
+.set-card[hidden] {
+  display: none;
 }
