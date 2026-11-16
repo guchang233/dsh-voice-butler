@@ -5,7 +5,15 @@ import { getBridge } from './bridge'
 import { importCustomSkin, listCustomSkins, removeCustomSkin, renameCustomSkin } from './customSkins'
 import { logError, logInfo } from './log'
 import { buildPeekData } from './peek'
-import { getApiKey, getAsrKey, saveApiKey, saveAsrKey, savePreferences, getSettings } from './store'
+import {
+  getApiKey,
+  getAsrKey,
+  getAsrKeys,
+  saveApiKey,
+  saveAsrKey,
+  savePreferences,
+  getSettings,
+} from './store'
 import { verifyAsrKey } from './speech/asr'
 import { syncOverlay } from './overlay'
 import { getVoice } from './voice'
@@ -37,7 +45,7 @@ const settingsPatch = z.object({
   effect: z.enum(['off', 'soft', 'vivid']).optional(),
   continuous: z.boolean().optional(),
   ballLevel: z.enum(['top', 'float', 'normal']).optional(),
-  asrProvider: z.enum(['siliconflow', 'zhipu', 'dashscope', 'deepseek']).optional(),
+  asrProvider: z.enum(['siliconflow', 'dashscope', 'deepseek']).optional(),
   asrModel: z.string().max(120).optional(),
   asrApiKey: z.string().max(400).optional(),
 })
@@ -300,7 +308,7 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.secretsReveal, () => {
     try {
-      return { ok: true as const, apiKey: getApiKey(), asrKey: getAsrKey() }
+      return { ok: true as const, apiKey: getApiKey(), asrKeys: getAsrKeys() }
     } catch (error) {
       logError('secrets.reveal', error)
       return { ok: false as const, error: String((error as Error)?.message ?? error) }

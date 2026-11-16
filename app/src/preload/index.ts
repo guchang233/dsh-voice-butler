@@ -4,6 +4,7 @@ import {
   type LinkState,
   type OverlayPayload,
   type AsrPartial,
+  type AsrProvider,
   type ButlerModelCatalog,
   type ButlerSession,
   type PeekData,
@@ -113,7 +114,12 @@ const api: ButlerApi = {
 
   onPanelShown: (handler) => subscribe<null>(IPC.panelShown, () => handler()),
   onBallHover: (handler) => subscribe<boolean>(IPC.ballHover, handler),
-  revealSecrets: (): Promise<{ ok: boolean; apiKey?: string; asrKey?: string; error?: string }> =>
+  revealSecrets: (): Promise<{
+    ok: boolean
+    apiKey?: string
+    asrKeys?: Partial<Record<AsrProvider, string>>
+    error?: string
+  }> =>
     ipcRenderer.invoke(IPC.secretsReveal),
   listSessions: (): Promise<{ ok: boolean; items?: ButlerSession[]; error?: string }> =>
     ipcRenderer.invoke(IPC.sessionsList),

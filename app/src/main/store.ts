@@ -87,7 +87,7 @@ function normalizeTheme(value: unknown): ThemeMode {
  * 升级上来不能突然说「还没配识别 Key」——那种情况继续用 DeepSeek；新装才默认硅基流动。
  */
 function normalizeAsrProvider(value: unknown, fallback: AsrProvider = 'siliconflow'): AsrProvider {
-  if (value === 'siliconflow' || value === 'zhipu' || value === 'dashscope' || value === 'deepseek') {
+  if (value === 'siliconflow' || value === 'dashscope' || value === 'deepseek') {
     return value
   }
   return fallback
@@ -240,17 +240,14 @@ export function resolveAsrModel(s: Stored = read()): string {
   if (stored) return stored
   return provider === 'siliconflow'
     ? 'FunAudioLLM/SenseVoiceSmall'
-    : provider === 'zhipu'
-      ? 'glm-asr-2512'
-      : provider === 'dashscope'
-        ? 'qwen3-asr-flash'
-        : 'default'
+    : provider === 'dashscope'
+      ? 'qwen3-asr-flash'
+      : 'default'
 }
 
-/** 当前识别厂商的明文 Key（只在主进程内用） */
-export function getAsrKey(): string {
+/** 指定厂商的明文 Key（只在主进程内用） */
+export function getAsrKeyFor(provider: AsrProvider): string {
   const s = read()
-  const provider = normalizeAsrProvider(s.asrProvider)
   const sealed = s.asrKeys?.[provider]
   if (!sealed?.value) return ''
   try {
@@ -260,6 +257,22 @@ export function getAsrKey(): string {
   } catch {
     return ''
   }
+}
+
+/** 当前厂商的 Key */
+export function getAsrKey(): string {
+  return getAsrKeyFor(normalizeAsrProvider(read().asrProvider))
+}
+
+/** 每家各一把，面板回填时一次拿走 */
+export function getAsrKeys(): Partial<Record<AsrProvider, string>> {
+  const s = read()
+  const out: Partial<Record<AsrProvider, string>> = {}
+  for (const provider of ['siliconflow', 'dashscope', 'deepseek'] as AsrProvider[]) {
+    const value = getAsrKeyFor(provider)
+    if (value) out[provider] = value
+  }
+  return out
 }
 
 /** 给某个厂商存/清识别 Key；key 为空串就是清除 */

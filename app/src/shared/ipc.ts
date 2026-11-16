@@ -153,15 +153,12 @@ export const BALL_LEVELS: Array<{ value: BallLevel; label: string; hint: string 
 ]
 
 /** 语音识别厂商：两家都有免费额度 */
-export type AsrProvider = 'siliconflow' | 'zhipu' | 'dashscope' | 'deepseek'
+export type AsrProvider = 'siliconflow' | 'dashscope' | 'deepseek'
 
 /** 每家可选的具体模型；第一项是默认 */
 export const ASR_MODELS: Record<AsrProvider, Array<{ id: string; label: string }>> = {
   siliconflow: [{ id: 'FunAudioLLM/SenseVoiceSmall', label: 'SenseVoiceSmall（免费）' }],
-  zhipu: [
-    { id: 'glm-asr-2512', label: 'GLM-ASR-2512（≤30 秒）' },
-    { id: 'glm-asr', label: 'GLM-ASR（别名）' }
-  ],
+
   dashscope: [
     { id: 'qwen3-asr-flash', label: 'Qwen3-ASR-Flash（推荐，≤5 分钟）' },
     { id: 'qwen-audio-3.0-asr-flash', label: 'Qwen-Audio-3.0-ASR-Flash' }
@@ -171,7 +168,6 @@ export const ASR_MODELS: Record<AsrProvider, Array<{ id: string; label: string }
 
 export const ASR_PROVIDERS: Array<{ value: AsrProvider; label: string; hint: string }> = [
   { value: 'siliconflow', label: '硅基流动', hint: 'SenseVoiceSmall，免费、国内直连' },
-  { value: 'zhipu', label: '智谱', hint: 'GLM-ASR，免费额度，单段 ≤30 秒' },
   { value: 'dashscope', label: '阿里云百炼', hint: 'Qwen3-ASR-Flash，有免费额度，单段 ≤5 分钟' },
   { value: 'deepseek', label: 'DeepSeek', hint: '原来的通道，跟语音钥匙共用一把 Key' }
 ]
@@ -180,7 +176,11 @@ export const ASR_PROVIDERS: Array<{ value: AsrProvider; label: string; hint: str
 export type AsrPartial = { committed: string; partial: string }
 
 /** 面板打开时用来回填：明文只在主进程 ↔ 本应用页面之间走 */
-export type RevealedSecrets = { apiKey: string; asrKey: string }
+export type RevealedSecrets = {
+  apiKey: string
+  /** 每家一把，切厂商不会串 */
+  asrKeys: Partial<Record<AsrProvider, string>>
+}
 
 /* ---- 会话与模型（都来自 DSH，面板只做选择） ---- */
 export type ButlerSession = {

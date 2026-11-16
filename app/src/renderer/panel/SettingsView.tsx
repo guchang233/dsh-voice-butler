@@ -61,12 +61,13 @@ export default function SettingsView({
   const [ballLevel, setBallLevel] = useState<BallLevel>(settings?.ballLevel ?? 'top')
   const [tab, setTab] = useState<SetTab>(settings ? 'asr' : 'asr')
   const [asrProvider, setAsrProvider] = useState<AsrProvider>(settings?.asrProvider ?? 'siliconflow')
-  const [asrKey, setAsrKey] = useState('')
+  // 每家厂商各一把 Key：切厂商就显示那一家的，不会串
+  const [asrKeys, setAsrKeys] = useState<Partial<Record<string, string>>>({})
   const [showApiKey, setShowApiKey] = useState(false)
   const [showAsrKey, setShowAsrKey] = useState(false)
   const [asrModel, setAsrModel] = useState(settings?.asrModel ?? '')
   // 记住刚回填的值：没改就别重发，免得每次保存都去校验一遍
-  const loaded = useRef({ apiKey: '', asrKey: '' })
+  const loaded = useRef<{ apiKey: string; asrKeys: Partial<Record<string, string>> }>({ apiKey: '', asrKeys: {} })
   const [persona, setPersona] = useState('')
   const [personaIsDefault, setPersonaIsDefault] = useState(true)
   const [personaState, setPersonaState] = useState<Tone>({ kind: 'idle', text: '' })
@@ -76,9 +77,9 @@ export default function SettingsView({
     void window.api.revealSecrets().then((result) => {
       if (!result.ok) return
       loaded.current.apiKey = result.apiKey ?? ''
-      loaded.current.asrKey = result.asrKey ?? ''
+      loaded.current.asrKeys = result.asrKeys ?? {}
       setApiKey(result.apiKey ?? '')
-      setAsrKey(result.asrKey ?? '')
+      setAsrKeys(result.asrKeys ?? {})
     })
   }, [])
 
@@ -175,7 +176,11 @@ export default function SettingsView({
       apiKey: apiKey.trim() && apiKey.trim() !== loaded.current.apiKey ? apiKey.trim() : undefined,
       asrProvider,
       asrModel,
-      asrApiKey: asrKey.trim() && asrKey.trim() !== loaded.current.asrKey ? asrKey.trim() : undefined,
+      asrApiKey:
+        (asrKeys[asrProvider] ?? '').trim() &&
+        (asrKeys[asrProvider] ?? '').trim() !== (loaded.current.asrKeys[asrProvider] ?? '')
+          ? (asrKeys[asrProvider] ?? '').trim()
+          : undefined,
       baseUrl: baseUrl.trim() || undefined,
       dshOrigin: dshOrigin.trim(),
       ttsVoice: voice,
@@ -235,6 +240,21 @@ export default function SettingsView({
   return (
     <div className="settings">
       {notice && <div className="toast ok">{notice}</div>}
+
+      <div className="set-tabs" role="tablist" aria-label="设置分类">
+        {SET_TABS.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.key}
+            className={tab === item.key ? 'set-tab is-on' : 'set-tab'}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
 
       <section className="set-card" hidden={tab !== 'chat'}>
         <h2>对话</h2>
@@ -315,8 +335,10 @@ export default function SettingsView({
                 className="input"
                 type={showAsrKey ? 'text' : 'password'}
                 placeholder="sk-…"
-                value={asrKey}
-                onChange={(event) => setAsrKey(event.target.value)}
+                value={asrKeys[asrProvider] ?? ''}
+                onChange={(event) =>
+                  setAsrKeys((prev) => ({ ...prev, [asrProvider]: event.target.value }))
+                }
                 spellCheck={false}
               />
               <button
@@ -328,7 +350,10 @@ export default function SettingsView({
               </button>
             </div>
             <span className="field-hint">
-              已保存的 Key 会填在这里；改完点「保存并校验」，会先查一次模型列表，不花识别额度。
+              {settings?.hasAsrKey
+                ? '这家已经有 Key 了，直接显示在框里；改完点「保存并校验」。'
+                : '这家还没有 Key；填好点「保存并校验」，会先查一次模型列表，不花识别额度。'}
+              每家各存一把，互不影响。
             </span>
           </label>
         )}

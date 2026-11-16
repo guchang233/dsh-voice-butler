@@ -13,7 +13,6 @@
 import type { AsrProvider } from '../../shared/ipc'
 
 const SILICONFLOW_BASE = 'https://api.siliconflow.cn/v1'
-const ZHIPU_BASE = 'https://open.bigmodel.cn/api/paas/v4'
 const DASHSCOPE_BASE = 'https://dashscope.aliyuncs.com'
 
 /**
@@ -32,7 +31,6 @@ export type TranscribeOptions = {
 
 function defaultModel(provider: AsrProvider): string {
   if (provider === 'siliconflow') return 'FunAudioLLM/SenseVoiceSmall'
-  if (provider === 'zhipu') return 'glm-asr-2512'
   if (provider === 'dashscope') return 'qwen3-asr-flash'
   return 'default'
 }
@@ -46,11 +44,9 @@ export async function verifyAsrKey(
   const url =
     provider === 'siliconflow'
       ? `${SILICONFLOW_BASE}/models`
-      : provider === 'zhipu'
-        ? `${ZHIPU_BASE}/models`
-        : provider === 'dashscope'
-          ? `${DASHSCOPE_BASE}/compatible-mode/v1/models`
-          : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/models`
+      : provider === 'dashscope'
+        ? `${DASHSCOPE_BASE}/compatible-mode/v1/models`
+        : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/models`
 
   const res = await fetch(url, {
     method: 'GET',
@@ -75,9 +71,7 @@ export async function transcribe(
   const url =
     provider === 'siliconflow'
       ? `${SILICONFLOW_BASE}/audio/transcriptions`
-      : provider === 'zhipu'
-        ? `${ZHIPU_BASE}/audio/transcriptions`
-        : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/v1/tools/asr`
+      : `${(options?.baseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')}/v1/tools/asr`
 
   const form = new FormData()
   if (provider !== 'deepseek') form.append('model', model)
@@ -160,13 +154,7 @@ async function describe(provider: AsrProvider, res: Response): Promise<string> {
   detail = detail.replace(/\s+/g, ' ').trim().slice(0, 200)
 
   const who =
-    provider === 'siliconflow'
-      ? '硅基流动'
-      : provider === 'zhipu'
-        ? '智谱'
-        : provider === 'dashscope'
-          ? '阿里云百炼'
-          : '语音识别'
+    provider === 'siliconflow' ? '硅基流动' : provider === 'dashscope' ? '阿里云百炼' : '语音识别'
   const map: Record<number, string> = {
     400: '这段音频服务端无法识别（400）',
     401: `${who} API Key 无效（401）`,
