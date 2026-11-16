@@ -59,6 +59,12 @@ export default function SettingsView({
     })
   }, [])
 
+  // settings 是异步来的：到了要把识别厂商对齐，否则界面会停在上面的 fallback 值
+  useEffect(() => {
+    if (!settings) return
+    setAsrProvider(settings.asrProvider)
+  }, [settings?.asrProvider])
+
   const save = async (): Promise<void> => {
     setState({ kind: 'busy', text: '正在校验…' })
     const result = await window.api.saveSettings({

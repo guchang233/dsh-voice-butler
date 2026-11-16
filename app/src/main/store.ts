@@ -286,7 +286,8 @@ export function savePreferences(patch: {
     accent: normalizeAccent(patch.accent ?? s.accent),
     effect: normalizeEffect(patch.effect ?? s.effect),
     ballLevel: normalizeBallLevel(patch.ballLevel ?? s.ballLevel),
-    asrProvider: normalizeAsrProvider(patch.asrProvider ?? s.asrProvider),
+    // 没传就沿用推断值（有 DeepSeek 钥匙的老用户不该被一次无关保存切成硅基流动）
+    asrProvider: normalizeAsrProvider(patch.asrProvider ?? s.asrProvider, s.apiKey ? 'deepseek' : 'siliconflow'),
     dshOrigin: patch.dshOrigin ?? s.dshOrigin,
   })
 }
