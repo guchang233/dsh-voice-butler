@@ -11,9 +11,9 @@ const settings: PublicSettings = {
   continuous: false,
   ballLevel: 'float',
   hasKey: true,
-  asrProvider: 'dashscope',
+  asrProvider: 'dashscope-ws',
   hasAsrKey: true,
-  asrModel: 'qwen3-asr-flash',
+  asrModel: 'qwen3-asr-flash-realtime',
   baseUrl: 'https://api.deepseek.com',
   ballPosition: null,
   wakeWord: '大肥鱼',
@@ -61,11 +61,12 @@ describe('设置页的标签页', () => {
   it('语音识别页有三家厂商、模型下拉、密钥输入', () => {
     const html = render()
     expect(html).toContain('硅基流动')
-    expect(html).toContain('阿里云百炼')
+    expect(html).toContain('百炼（实时）')
+    expect(html).toContain('百炼（整段）')
     expect(html).toContain('DeepSeek')
     expect(html).not.toContain('智谱')
     expect(html).toContain('识别模型')
-    expect(html).toContain('qwen3-asr-flash')
+    expect(html).toContain('qwen3-asr-flash-realtime')
     expect(html).toContain('key-row')
   })
 

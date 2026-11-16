@@ -5,6 +5,7 @@ import { logError, logInfo } from './log'
 import { overlaySetState, overlayToolEnd, overlayToolStart } from './overlay'
 import { transcribe } from './speech/asr'
 import { OnlineAsr } from './speech/online-asr'
+import { RealtimeAsr } from './speech/realtime-asr'
 import { SentenceChunker, TtsQueue, TTS_SAMPLE_RATE } from './speech/tts'
 import { getApiKey, getAsrKey, getAsrKeyFor, getSettings } from './store'
 import { getBall, getPanel, showPanel } from './windows'
@@ -50,8 +51,12 @@ type Capture = {
 export class Voice {
   /** 待机时用的唤醒词引擎（标准灵敏度） */
   private watcher: KeywordWatcher | null = null
-  /** 伪流式识别：边说边出字幕，收尾再整段重识别 */
-  private readonly asr: OnlineAsr
+  /** 伪流式识别（硅基流动这类单次 150ms 的接口用） */
+  private readonly asrOnline: OnlineAsr
+  /** 真流式识别（百炼 qwen3-asr-flash-realtime，WebSocket） */
+  private readonly asrRealtime: RealtimeAsr
+  /** 当前这一句实际用的引擎 */
+  private asr: OnlineAsr | RealtimeAsr
   /** 播报 / 思考时用的引擎：门限更低，方便一句话把管家打断 */
   private bargeWatcher: KeywordWatcher | null = null
   private endpointer = createEndpointer({ maxMs: MAX_UTTERANCE_MS })
@@ -117,7 +122,7 @@ export class Voice {
       },
       (error) => logError('tts', error),
     )
-    this.asr = new OnlineAsr(async (wav) => {
+    this.asrOnline = new OnlineAsr(async (wav) => {
       const settings = getSettings()
       const provider = settings.asrProvider
       const key = provider === 'deepseek' ? getApiKey() : getAsrKey()
@@ -126,10 +131,19 @@ export class Voice {
       }
       return transcribe(provider, key, wav, { baseUrl: settings.baseUrl, model: settings.asrModel })
     })
-    this.asr.onUpdate((shown) => {
+    this.asrOnline.onUpdate((shown) => {
       if (this.state !== 'listening' && this.state !== 'confirming') return
       this.send(IPC.asrPartial, shown)
     })
+    this.asrRealtime = new RealtimeAsr({
+      getKey: () => getAsrKeyFor('dashscope'),
+      onUpdate: (shown) => {
+        if (this.state !== 'listening' && this.state !== 'confirming') return
+        this.send(IPC.asrPartial, shown)
+      },
+      onError: (error) => logError('asr.realtime', error)
+    })
+    this.asr = this.asrOnline
   }
 
 
@@ -331,6 +345,8 @@ export class Voice {
    */
   private beginListening(skipMs = 0): void {
     this.endpointer.reset()
+    // 百炼实时走 WebSocket 真流式；其余厂商用伪流式
+    this.asr = getSettings().asrProvider === 'dashscope-ws' ? this.asrRealtime : this.asrOnline
     this.asr.reset()
     this.utterance = []
     this.skipUntil = skipMs > 0 ? Date.now() + skipMs : 0

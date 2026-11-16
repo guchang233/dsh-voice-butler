@@ -48,7 +48,7 @@ const settingsPatch = z.object({
   effect: z.enum(['off', 'soft', 'vivid']).optional(),
   continuous: z.boolean().optional(),
   ballLevel: z.enum(['top', 'float', 'normal']).optional(),
-  asrProvider: z.enum(['siliconflow', 'dashscope', 'deepseek']).optional(),
+  asrProvider: z.enum(['siliconflow', 'dashscope', 'dashscope-ws', 'deepseek']).optional(),
   asrModel: z.string().max(120).optional(),
   asrApiKey: z.string().max(400).optional(),
 })
@@ -315,7 +315,7 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.asrVerify, async (_event, raw: unknown) => {
     const parsed = z
       .object({
-        provider: z.enum(['siliconflow', 'dashscope', 'deepseek']),
+        provider: z.enum(['siliconflow', 'dashscope', 'dashscope-ws', 'deepseek']),
         asrApiKey: z.string().max(400).optional(),
         asrModel: z.string().max(120).optional()
       })

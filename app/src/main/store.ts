@@ -110,7 +110,7 @@ function resolveTtsModel(s: Stored): string {
 }
 
 function normalizeAsrProvider(value: unknown, fallback: AsrProvider = 'siliconflow'): AsrProvider {
-  if (value === 'siliconflow' || value === 'dashscope' || value === 'deepseek') {
+  if (value === 'siliconflow' || value === 'dashscope' || value === 'dashscope-ws' || value === 'deepseek') {
     return value
   }
   return fallback
@@ -270,19 +270,28 @@ export function resolveAsrModel(s: Stored = read()): string {
       ? ['FunAudioLLM/SenseVoiceSmall']
       : provider === 'dashscope'
         ? ['qwen3-asr-flash']
-        : ['default']
+        : provider === 'dashscope-ws'
+          ? ['qwen3-asr-flash-realtime']
+          : ['default']
   if (stored && allowed.includes(stored)) return stored
   return provider === 'siliconflow'
     ? 'FunAudioLLM/SenseVoiceSmall'
     : provider === 'dashscope'
       ? 'qwen3-asr-flash'
-      : 'default'
+      : provider === 'dashscope-ws'
+        ? 'qwen3-asr-flash-realtime'
+        : 'default'
+}
+
+/** 实时档和整段档共用百炼那一把 Key */
+export function asrKeyOwner(provider: AsrProvider): AsrProvider {
+  return provider === 'dashscope-ws' ? 'dashscope' : provider
 }
 
 /** 指定厂商的明文 Key（只在主进程内用） */
 export function getAsrKeyFor(provider: AsrProvider): string {
   const s = read()
-  const sealed = s.asrKeys?.[provider]
+  const sealed = s.asrKeys?.[asrKeyOwner(provider)]
   if (!sealed?.value) return ''
   try {
     const buf = Buffer.from(sealed.value, 'base64')
@@ -315,14 +324,14 @@ export function saveAsrKey(provider: AsrProvider, key: string): void {
   const keys = { ...(s.asrKeys ?? {}) }
   const trimmed = key.trim()
   if (!trimmed) {
-    delete keys[provider]
+    delete keys[asrKeyOwner(provider)]
     write({ ...s, v: 2, asrKeys: keys })
     return
   }
   const sealed = safeStorage.isEncryptionAvailable()
     ? { value: safeStorage.encryptString(trimmed).toString('base64'), enc: true }
     : { value: Buffer.from(trimmed, 'utf8').toString('base64'), enc: false }
-  keys[provider] = sealed
+  keys[asrKeyOwner(provider)] = sealed
   write({ ...s, v: 2, asrKeys: keys })
 }
 

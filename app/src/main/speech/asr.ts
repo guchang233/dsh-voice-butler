@@ -30,12 +30,17 @@ export type TranscribeOptions = {
 }
 
 function who(provider: AsrProvider): string {
-  return provider === 'siliconflow' ? '硅基流动识别' : provider === 'dashscope' ? '阿里云百炼识别' : '语音识别'
+  return provider === 'siliconflow'
+    ? '硅基流动识别'
+    : provider === 'dashscope' || provider === 'dashscope-ws'
+      ? '阿里云百炼识别'
+      : '语音识别'
 }
 
 function defaultModel(provider: AsrProvider): string {
   if (provider === 'siliconflow') return 'FunAudioLLM/SenseVoiceSmall'
   if (provider === 'dashscope') return 'qwen3-asr-flash'
+  if (provider === 'dashscope-ws') return 'qwen3-asr-flash-realtime'
   return 'default'
 }
 
@@ -70,7 +75,8 @@ export async function verifyAsrKey(
   apiKey: string,
   options?: TranscribeOptions
 ): Promise<void> {
-  if (provider === 'dashscope') {
+  if (provider === 'dashscope' || provider === 'dashscope-ws') {
+    // 实时档用同一把 Key、同一个模型家族：跑一次整段识别作为「这把 Key 能用」的证明
     await transcribe(provider, apiKey, silenceWav(), options)
     return
   }
@@ -113,8 +119,9 @@ export async function transcribe(
 ): Promise<string> {
   const model = (options?.model || '').trim() || defaultModel(provider)
 
-  if (provider === 'dashscope') {
-    return transcribeDashScope(apiKey, wav, model)
+  if (provider === 'dashscope' || provider === 'dashscope-ws') {
+    const httpModel = provider === 'dashscope-ws' ? 'qwen3-asr-flash' : model
+    return transcribeDashScope(apiKey, wav, httpModel)
   }
 
   const url =

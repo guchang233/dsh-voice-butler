@@ -155,19 +155,21 @@ export const BALL_LEVELS: Array<{ value: BallLevel; label: string; hint: string 
 ]
 
 /** 语音识别厂商：两家都有免费额度 */
-export type AsrProvider = 'siliconflow' | 'dashscope' | 'deepseek'
+export type AsrProvider = 'siliconflow' | 'dashscope' | 'dashscope-ws' | 'deepseek'
 
 /** 每家可选的具体模型；第一项是默认 */
 export const ASR_MODELS: Record<AsrProvider, Array<{ id: string; label: string }>> = {
   siliconflow: [{ id: 'FunAudioLLM/SenseVoiceSmall', label: 'SenseVoiceSmall（免费）' }],
 
   dashscope: [{ id: 'qwen3-asr-flash', label: 'Qwen3-ASR-Flash（≤5 分钟）' }],
+  'dashscope-ws': [{ id: 'qwen3-asr-flash-realtime', label: 'Qwen3-ASR-RealTime（流式）' }],
   deepseek: [{ id: 'default', label: '内置（跟语音钥匙共用）' }]
 }
 
 export const ASR_PROVIDERS: Array<{ value: AsrProvider; label: string; hint: string }> = [
   { value: 'siliconflow', label: '硅基流动', hint: 'SenseVoiceSmall，免费、国内直连' },
-  { value: 'dashscope', label: '阿里云百炼', hint: 'Qwen3-ASR-Flash，有免费额度，单段 ≤5 分钟' },
+  { value: 'dashscope', label: '百炼（整段）', hint: 'Qwen3-ASR-Flash 一次性识别，实测 4~7 秒，说完才出字' },
+  { value: 'dashscope-ws', label: '百炼（实时）', hint: 'Qwen3-ASR-RealTime，边说你边出字，推荐' },
   { value: 'deepseek', label: 'DeepSeek', hint: '原来的通道，跟语音钥匙共用一把 Key' }
 ]
 
