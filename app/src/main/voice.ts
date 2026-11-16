@@ -1,4 +1,4 @@
-import { createEndpointer, rms, SAMPLE_RATE } from './audio/vad'
+import { createEndpointer, encodeWavFromInt16, rms, SAMPLE_RATE } from './audio/vad'
 import { createKeywordWatcher, WAKE_WORD_TEXT, type KeywordWatcher } from './audio/kws'
 import { getBridge } from './bridge'
 import { logError, logInfo } from './log'
@@ -408,8 +408,16 @@ export class Voice {
 
     let text = ''
     try {
-      logInfo('voice', `utterance ${Math.round(totalMs)}ms reason=${reason ?? '-'} -> asr`)
+      const modelNow = settings.asrProvider
+      logInfo('voice', `utterance ${Math.round(totalMs)}ms reason=${reason ?? '-'} -> asr（${modelNow}）`)
       text = await this.asr.finish()
+      // 实时档万一没连上/没回字：退回整段识别，别把这一句丢掉
+      if (!text && modelNow === 'dashscope-ws' && chunks.length > 0) {
+        logInfo('voice', '实时识别没回字，退回整段识别')
+        text = await transcribe('dashscope', getAsrKeyFor('dashscope'), encodeWavFromInt16(chunks), {
+          model: 'qwen3-asr-flash'
+        })
+      }
       logInfo('voice', 'asr: ' + text)
     } catch (error) {
       logError('asr', error)
